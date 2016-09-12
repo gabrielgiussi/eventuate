@@ -52,6 +52,5 @@ object ProjectDependencies {
   val Scalaz =               "org.scalaz"                %% "scalaz-core"               % "7.1.0"
   val VertxCore =            "io.vertx"                   % "vertx-core"                % VertxVersion
   val VertxRxJava =          "io.vertx"                   % "vertx-rx-java"             % VertxVersion
-  val VertxReactiveStream =  "io.vertx"                   % "vertx-reactive-streams"    % VertxVersion
 }
 

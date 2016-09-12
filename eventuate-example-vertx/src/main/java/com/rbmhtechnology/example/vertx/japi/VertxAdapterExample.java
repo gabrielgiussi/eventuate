@@ -22,6 +22,7 @@ import akka.actor.Props;
 import akka.japi.pf.ReceiveBuilder;
 import com.rbmhtechnology.eventuate.AbstractEventsourcedView;
 import com.rbmhtechnology.eventuate.ApplicationVersion;
+import com.rbmhtechnology.eventuate.EndpointFilters$;
 import com.rbmhtechnology.eventuate.ReplicationEndpoint;
 import com.rbmhtechnology.eventuate.adapter.vertx.VertxAdapterSystem;
 import com.rbmhtechnology.eventuate.adapter.vertx.japi.ConfirmationType;
@@ -37,7 +38,6 @@ import io.vertx.rxjava.core.Vertx;
 import io.vertx.rxjava.core.eventbus.Message;
 import javaslang.collection.List;
 import rx.Observable;
-import scala.collection.immutable.Map$;
 import scala.collection.immutable.Set;
 
 import java.time.Duration;
@@ -212,7 +212,7 @@ public class VertxAdapterExample {
                                                                final Set<String> logNames,
                                                                final Function<String, Props> logFactory,
                                                                final ActorSystem system) {
-    return new ReplicationEndpoint(id, logNames, func(logFactory::apply), set(), Map$.MODULE$.empty(), "default",
+    return new ReplicationEndpoint(id, logNames, func(logFactory::apply), set(), EndpointFilters$.MODULE$.NoFilters(), "default",
       ApplicationVersion.apply("0.1"), system);
   }
 
