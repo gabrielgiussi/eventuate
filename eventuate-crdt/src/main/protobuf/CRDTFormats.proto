@@ -19,37 +19,13 @@ option optimize_for = SPEED;
 
 import "CommonFormats.proto";
 
-message ORSetFormat {
+message MatchFormat {
   repeated VersionedFormat versionedEntries = 1;
 }
 
-message ORCartFormat {
-  optional ORSetFormat orSet = 1;
-}
-
-message ORCartEntryFormat {
-  optional PayloadFormat key = 1;
-  optional int32 quantity = 2;
-}
-
-message LWWRegisterFormat {
-  optional MVRegisterFormat mvRegister = 1;
-}
-
-message MVRegisterFormat {
-  repeated VersionedFormat versioned = 1;
-}
 
 message ValueUpdatedFormat {
   optional PayloadFormat operation = 1;
-}
-
-message UpdateOpFormat {
-  optional PayloadFormat delta = 1;
-}
-
-message SetOpFormat {
-  optional PayloadFormat value = 1;
 }
 
 message AddOpFormat {

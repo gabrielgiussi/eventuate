@@ -63,16 +63,31 @@ trait CRDTServiceOps[A, B] {
   /**
    * Update phase 2 ("downstream").
    */
-  def update(crdt: A, operation: Any, event: DurableEvent): A
+  def update(crdt: A, operation: Any, event: DurableEvent): (A, Option[Apologie[B]])
 }
 
+/*
+id: id del crdt -> NO. Lo tiene el DurableEvent
+¿user: alguna manera de identificar el que creo el evento para mandarle una notificacion?
+o eso deberia estar contenido en el tipo concreto? ejemplo en el caso del match cuando vos se sumas al partido
+se suma un nuevo objeto de tipo integrante q tiene datos sobre el usuario, de ahi podria resolver a quien mandarle la apologie
+tendria q tener un EventsourcedView q escuche todos los eventos de todos los crdt y de alguna manera se los envie a los usuarios
+dificil: envia una notificacion al usuario?
+SI la apologie la persisto como un evento.... y ante este evento yo envio una notificacion al usuario...
+como evito que se le envien notificaciones repetidas al "rearmar" el actor?
+ */
+// Apologie[B] o Apologie[ValueUpdated]?
+case class Apologie[B](user: String, operation: Any)
+
 object CRDTService {
+
   /**
    * Persistent event with update operation.
    *
    * @param operation update operation.
    */
   case class ValueUpdated(operation: Any) extends CRDTFormat
+
 }
 
 private class CRDTServiceSettings(config: Config) {
@@ -89,6 +104,7 @@ private class CRDTServiceSettings(config: Config) {
  * @tparam B CRDT value type
  */
 trait CRDTService[A, B] {
+
   import CRDTService._
 
   private var manager: Option[ActorRef] = None
@@ -166,17 +182,20 @@ trait CRDTService[A, B] {
   }
 
   private case class Get(id: String) extends Identified
+
   private case class GetReply(id: String, value: B) extends Identified
 
   private case class Update(id: String, operation: Any) extends Identified
+
   private case class UpdateReply(id: String, value: B) extends Identified
 
   private case class Save(id: String) extends Identified
+
   private case class SaveReply(id: String, metadata: SnapshotMetadata) extends Identified
 
   private case class OnChange(crdt: A, operation: Any)
 
-  private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor {
+  private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor with PersistOnEvent {
     override val id =
       s"${serviceId}_${crdtId}"
 
@@ -215,8 +234,16 @@ trait CRDTService[A, B] {
 
     override def onEvent = {
       case evt @ ValueUpdated(operation) =>
-        crdt = ops.update(crdt, operation, lastHandledEvent)
-        context.parent ! OnChange(crdt, operation)
+        //crdt = ops.update(crdt, operation, lastHandledEvent)
+        ops.update(crdt, operation, lastHandledEvent) match {
+          case (c, Some(x)) => {
+            crdt = c
+            println("Se creo la apologie " + x.user + " en la location " + lastHandledEvent.localLogId)
+            persistOnEvent(x)
+          }
+          case (c, None) => crdt = c
+        }
+      //context.parent ! OnChange(crdt, operation)
     }
 
     override def onSnapshot = {
