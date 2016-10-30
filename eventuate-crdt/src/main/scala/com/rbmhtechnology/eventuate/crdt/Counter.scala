@@ -17,8 +17,8 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
-
-import com.rbmhtechnology.eventuate.DurableEvent
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Eval, Obsolete, Operation }
+import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
 
 import scala.concurrent.Future
 
@@ -27,34 +27,52 @@ import scala.concurrent.Future
  *
  * @param value Current counter value.
  * @tparam A Counter value type.
- *
  * @see [[http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf A comprehensive study of Convergent and Commutative Replicated Data Types]]
  */
-case class Counter[A: Integral](value: A) {
+case class Counter[A: Integral](polog: POLog = POLog(), value: A) {
   /**
    * Adds `delta` (which can also be negative) to the counter `value` and
    * returns an updated counter.
    */
-  def update(delta: A): Counter[A] =
-    copy(value = implicitly[Integral[A]].plus(value, delta))
+  //def update(delta: A): Counter[A] = copy(value = implicitly[Integral[A]].plus(value, delta))
 }
 
 object Counter {
   def apply[A: Integral]: Counter[A] =
-    Counter[A](implicitly[Integral[A]].zero)
+    Counter[A](value = implicitly[Integral[A]].zero)
 
   implicit def CounterServiceOps[A: Integral] = new CRDTServiceOps[Counter[A], A] {
     override def zero: Counter[A] =
       Counter.apply[A]
 
-    override def value(crdt: Counter[A]): A =
-      crdt.value
+    val a = (s: A, op: Versioned[Operation]) => op.value match {
+      case UpdateOp(delta) => implicitly[Integral[A]].plus(s, delta.asInstanceOf[A])
+    }
+
+    val eval: Eval[A] = (polog: POLog, state: A) => polog.log.foldLeft(state)((s: A, op: Versioned[Operation]) => a(s, op))
+
+    val obs = (op1: Versioned[Operation], op2: Versioned[Operation]) => false
+
+    val pruneState = (s: A, o: Obsolete) => s
+
+    val updateState = (s: A, op: Versioned[Operation]) => s
+
+    override def value(crdt: Counter[A]): A = eval(crdt.polog, crdt.value)
 
     override def precondition: Boolean =
       false
 
-    override def effect(crdt: Counter[A], operation: Any, event: DurableEvent): Counter[A] = operation match {
-      case UpdateOp(delta) => crdt.update(delta.asInstanceOf[A])
+    def effect(crdt: Counter[A], op: Operation, t: VectorTime): Counter[A] = {
+      val newPolog = crdt.polog prune (Versioned(op, t), obs) add (Versioned(op, t), obs)
+      crdt.copy(newPolog, pruneState(crdt.value, obs))
+    }
+
+    override def stable(crdt: Counter[A], t: VectorTime): Counter[A] = {
+      crdt.polog.op(t) match {
+        case Some(op) => crdt.copy(crdt.polog remove (Versioned(op, t)), updateState(crdt.value, Versioned(op, t)))
+        case None     => crdt
+      }
+
     }
   }
 }

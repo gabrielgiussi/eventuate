@@ -23,6 +23,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.typesafe.config.Config
 
 import scala.concurrent.{ ExecutionContext, Future }
@@ -58,12 +59,15 @@ trait CRDTServiceOps[A, B] {
   /**
    * Update phase 1 ("atSource"). Prepares an operation for phase 2.
    */
-  def prepare(crdt: A, operation: Any): Option[Any] = Some(operation)
+  def prepare(crdt: A, operation: Operation): Option[Operation] = Some(operation)
 
   /**
    * Update phase 2 ("downstream").
    */
-  def effect(crdt: A, operation: Any, event: DurableEvent): A
+  //def effect(crdt: A, operation: Any, event: DurableEvent): A
+  def effect(crdt: A, op: Operation, t: VectorTime): A
+
+  def stable(crdt: A, t: VectorTime): A
 }
 
 object CRDTService {
@@ -72,7 +76,7 @@ object CRDTService {
    *
    * @param operation update operation.
    */
-  case class ValueUpdated(operation: Any) extends CRDTFormat
+  case class ValueUpdated(operation: Operation) extends CRDTFormat
 }
 
 private class CRDTServiceSettings(config: Config) {
@@ -152,7 +156,7 @@ trait CRDTService[A, B] {
    * Updates the CRDT identified by `id` with given `operation`.
    * Returns the updated value of the CRDT.
    */
-  protected def op(id: String, operation: Any): Future[B] = withManagerAndDispatcher { (w, d) =>
+  protected def op(id: String, operation: Operation): Future[B] = withManagerAndDispatcher { (w, d) =>
     w.ask(Update(id, operation)).mapTo[UpdateReply].map(_.value)(d)
   }
 
@@ -168,13 +172,16 @@ trait CRDTService[A, B] {
   private case class Get(id: String) extends Identified
   private case class GetReply(id: String, value: B) extends Identified
 
-  private case class Update(id: String, operation: Any) extends Identified
+  private case class Update(id: String, operation: Operation) extends Identified
   private case class UpdateReply(id: String, value: B) extends Identified
 
   private case class Save(id: String) extends Identified
   private case class SaveReply(id: String, metadata: SnapshotMetadata) extends Identified
 
-  private case class OnChange(crdt: A, operation: Any)
+  // El locationId es para pruebas, deberia reemplazarse por un Local Replication Filter
+  case class Stable(timestamp: VectorTime, locationId: String)
+
+  private case class OnChange(crdt: A, operation: Operation)
 
   private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor {
     override val id =
@@ -215,8 +222,9 @@ trait CRDTService[A, B] {
 
     override def onEvent = {
       case evt @ ValueUpdated(operation) =>
-        crdt = ops.effect(crdt, operation, lastHandledEvent)
+        crdt = ops.effect(crdt, operation, lastHandledEvent.vectorTimestamp)
         context.parent ! OnChange(crdt, operation)
+      case Stable(timestamp,locationId) if (lastHandledEvent.localLogId == locationId) => crdt = ops.stable(crdt,timestamp)
     }
 
     override def onSnapshot = {
