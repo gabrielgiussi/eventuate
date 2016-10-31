@@ -18,6 +18,7 @@ package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
 import akka.serialization.Serializer
+import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.crdt.CRDTFormats._
 import com.rbmhtechnology.eventuate.crdt.CRDTService._
 import com.rbmhtechnology.eventuate.serializer.CommonSerializer
@@ -28,11 +29,13 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
 
   private val UpdatedOpClass = classOf[UpdateOp]
   private val ValueUpdatedClass = classOf[ValueUpdated]
+  private val StableClass = classOf[Stable]
 
   override def identifier: Int = 22567
   override def includeManifest: Boolean = true
 
   override def toBinary(o: AnyRef): Array[Byte] = o match {
+    case s: Stable => stableFormatBuilder(s).build().toByteArray
     case v: ValueUpdated =>
       valueUpdatedFormat(v).build().toByteArray
     case o: UpdateOp =>
@@ -44,6 +47,7 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   override def fromBinary(bytes: Array[Byte], manifest: Option[Class[_]]): AnyRef = manifest match {
     case None => throw new IllegalArgumentException("manifest required")
     case Some(clazz) => clazz match {
+      case StableClass => stable(StableFormat.parseFrom(bytes))
       case ValueUpdatedClass =>
         valueUpdated(ValueUpdatedFormat.parseFrom(bytes))
       case UpdatedOpClass =>
@@ -63,6 +67,8 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private def updateOpFormatBuilder(op: UpdateOp): UpdateOpFormat.Builder =
     UpdateOpFormat.newBuilder.setDelta(payloadSerializer.payloadFormatBuilder(op.delta.asInstanceOf[AnyRef]))
 
+  private def stableFormatBuilder(s: Stable): StableFormat.Builder = StableFormat.newBuilder.setTimestamp(payloadSerializer.payloadFormatBuilder(s.timestamp.asInstanceOf[VectorTime]))
+
   // --------------------------------------------------------------------------------
   //  fromBinary helpers
   // --------------------------------------------------------------------------------
@@ -72,5 +78,8 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
 
   private def updateOp(opFormat: UpdateOpFormat): UpdateOp =
     UpdateOp(payloadSerializer.payload(opFormat.getDelta))
+
+  private def stable(stableFormat: StableFormat): Stable =
+    Stable(payloadSerializer.payload(stableFormat.getTimestamp))
 
 }

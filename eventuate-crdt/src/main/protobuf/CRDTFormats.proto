@@ -60,3 +60,7 @@ message RemoveOpFormat {
   optional PayloadFormat entry = 1;
   repeated VectorTimeFormat timestamps = 2;
 }
+
+message StableFormat {
+  optional PayloadFormat timestamp = 1;
+}

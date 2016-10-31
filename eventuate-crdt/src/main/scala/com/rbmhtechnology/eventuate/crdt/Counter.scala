@@ -55,7 +55,7 @@ object Counter {
 
     val pruneState = (s: A, o: Obsolete) => s
 
-    val updateState = (s: A, op: Versioned[Operation]) => s
+    val updateState = (s: A, op: Versioned[Operation]) => a(s, op)
 
     override def value(crdt: Counter[A]): A = eval(crdt.polog, crdt.value)
 
@@ -74,6 +74,8 @@ object Counter {
       }
 
     }
+
+    def timestamps(crdt: Counter[A]): Set[VectorTime] = crdt.polog.log.map(_.vectorTimestamp)
   }
 }
 

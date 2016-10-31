@@ -68,6 +68,8 @@ trait CRDTServiceOps[A, B] {
   def effect(crdt: A, op: Operation, t: VectorTime): A
 
   def stable(crdt: A, t: VectorTime): A
+
+  def timestamps(crdt: A): Set[VectorTime]
 }
 
 object CRDTService {
@@ -77,6 +79,8 @@ object CRDTService {
    * @param operation update operation.
    */
   case class ValueUpdated(operation: Operation) extends CRDTFormat
+
+  case class Stable(timestamp: Any) extends CRDTFormat
 }
 
 private class CRDTServiceSettings(config: Config) {
@@ -156,6 +160,14 @@ trait CRDTService[A, B] {
    * Updates the CRDT identified by `id` with given `operation`.
    * Returns the updated value of the CRDT.
    */
+  def stable(id: String, t: VectorTime): Future[String] = withManagerAndDispatcher { (w, d) =>
+    w.ask(MarkStable(id, t)).mapTo[MarkStableReply].map(_.id)(d)
+  }
+
+  def timestamps(id: String): Future[Set[VectorTime]] = withManagerAndDispatcher { (w, d) =>
+    w.ask(GetTimestamps(id)).mapTo[GetTimestampsReply].map(_.timestamps)(d)
+  }
+
   protected def op(id: String, operation: Operation): Future[B] = withManagerAndDispatcher { (w, d) =>
     w.ask(Update(id, operation)).mapTo[UpdateReply].map(_.value)(d)
   }
@@ -178,8 +190,13 @@ trait CRDTService[A, B] {
   private case class Save(id: String) extends Identified
   private case class SaveReply(id: String, metadata: SnapshotMetadata) extends Identified
 
-  // El locationId es para pruebas, deberia reemplazarse por un Local Replication Filter
-  case class Stable(timestamp: VectorTime, locationId: String)
+  private case class MarkStable(id: String, timestamp: VectorTime) extends Identified
+
+  private case class MarkStableReply(id: String) extends Identified
+
+  private case class GetTimestamps(id: String) extends Identified
+
+  case class GetTimestampsReply(timestamps: Set[VectorTime])
 
   private case class OnChange(crdt: A, operation: Operation)
 
@@ -218,13 +235,20 @@ trait CRDTService[A, B] {
           case Failure(err) =>
             sender() ! Status.Failure(err)
         }
+      case GetTimestamps(id) => sender() ! GetTimestampsReply(ops.timestamps(crdt))
+      case MarkStable(`crdtId`, t) => persist(Stable(t)) {
+        case Success(evt) =>
+          sender() ! MarkStableReply(crdtId)
+        case Failure(err) =>
+          sender() ! Status.Failure(err)
+      }
     }
 
     override def onEvent = {
       case evt @ ValueUpdated(operation) =>
         crdt = ops.effect(crdt, operation, lastHandledEvent.vectorTimestamp)
         context.parent ! OnChange(crdt, operation)
-      case Stable(timestamp,locationId) if (lastHandledEvent.localLogId == locationId) => crdt = ops.stable(crdt,timestamp)
+      case Stable(timestamp) if (lastHandledEvent.localLogId == lastHandledEvent.processId) => crdt = ops.stable(crdt, timestamp.asInstanceOf[VectorTime])
     }
 
     override def onSnapshot = {
