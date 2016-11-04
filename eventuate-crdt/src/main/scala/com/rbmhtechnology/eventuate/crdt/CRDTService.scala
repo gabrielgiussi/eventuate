@@ -23,7 +23,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 
 import com.rbmhtechnology.eventuate._
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
 import com.typesafe.config.Config
 
 import scala.concurrent.{ ExecutionContext, Future }
@@ -32,52 +32,70 @@ import scala.language.higherKinds
 import scala.util._
 
 /**
- * Typeclass to be implemented by CRDTs if they shall be managed by [[CRDTService]]
- *
- * @tparam A CRDT type
- * @tparam B CRDT value type
- */
-trait CRDTServiceOps[A, B] {
+  * Typeclass to be implemented by CRDTs if they shall be managed by [[CRDTService]]
+  *
+  * @tparam A CRDT type
+  * @tparam B CRDT value type
+  */
+trait CRDTServiceOps[A <: CRDT[B] with CRDTHelper[B,A],B] {
 
   /**
-   * Default CRDT instance.
-   */
+    * Default CRDT instance.
+    */
   def zero: A
 
   /**
-   * Returns the CRDT value (for example, the entries of an OR-Set)
-   */
-  def value(crdt: A): B
+    * Returns the CRDT value (for example, the entries of an OR-Set)
+    */
+  def value(crdt: A): B = eval(crdt.polog, crdt.state)
 
   /**
-   * Must return `true` if CRDT checks preconditions. Should be overridden to return
-   * `false` if CRDT does not check preconditions, as this will significantly increase
-   * write throughput.
-   */
+    * Must return `true` if CRDT checks preconditions. Should be overridden to return
+    * `false` if CRDT does not check preconditions, as this will significantly increase
+    * write throughput.
+    */
   def precondition: Boolean = true
 
   /**
-   * Update phase 1 ("atSource"). Prepares an operation for phase 2.
-   */
+    * Update phase 1 ("atSource"). Prepares an operation for phase 2.
+    */
   def prepare(crdt: A, operation: Operation): Option[Operation] = Some(operation)
 
   /**
-   * Update phase 2 ("downstream").
-   */
+    * Update phase 2 ("downstream").
+    */
   //def effect(crdt: A, operation: Any, event: DurableEvent): A
-  def effect(crdt: A, op: Operation, t: VectorTime): A
+  final def effect(crdt: A, op: Operation, t: VectorTime): A = {
+    val newPolog = crdt.polog prune (Versioned(op, t), obs) add (Versioned(op, t), obs)
+    crdt.copyCRDT(newPolog, pruneState(crdt.state, obs))
+  }
 
-  def stable(crdt: A, t: VectorTime): A
+  final def stable(crdt: A, t: VectorTime): A = {
+    crdt.polog.op(t) match {
+      case Some(op) => crdt.copyCRDT(crdt.polog remove (Versioned(op, t)), updateState(crdt.state, Versioned(op, t)))
+      case None     => crdt
+    }
 
+  }
+
+  val eval: Eval[B]
+
+  val obs: Obsolete
+
+  val pruneState: PruneState[B]
+
+  implicit val updateState: UpdateState[B]
+
+  /** For testing purposes only */
   def timestamps(crdt: A): Set[VectorTime]
 }
 
 object CRDTService {
   /**
-   * Persistent event with update operation.
-   *
-   * @param operation update operation.
-   */
+    * Persistent event with update operation.
+    *
+    * @param operation update operation.
+    */
   case class ValueUpdated(operation: Operation) extends CRDTFormat
 
   case class Stable(timestamp: Any) extends CRDTFormat
@@ -89,14 +107,14 @@ private class CRDTServiceSettings(config: Config) {
 }
 
 /**
- * A generic, replicated CRDT service that manages a map of CRDTs identified by name.
- * Replication is based on the replicated event `log` that preserves causal ordering
- * of events.
- *
- * @tparam A CRDT type
- * @tparam B CRDT value type
- */
-trait CRDTService[A, B] {
+  * A generic, replicated CRDT service that manages a map of CRDTs identified by name.
+  * Replication is based on the replicated event `log` that preserves causal ordering
+  * of events.
+  *
+  * @tparam A CRDT type
+  * @tparam B CRDT value type
+  */
+trait CRDTService[A <: CRDT[B] with CRDTHelper[B,A], B] {
   import CRDTService._
 
   private var manager: Option[ActorRef] = None
@@ -108,58 +126,58 @@ trait CRDTService[A, B] {
     Timeout(settings.operationTimeout)
 
   /**
-   * This service's actor system.
-   */
+    * This service's actor system.
+    */
   def system: ActorSystem
 
   /**
-   * CRDT service id.
-   */
+    * CRDT service id.
+    */
   def serviceId: String
 
   /**
-   * Event log.
-   */
+    * Event log.
+    */
   def log: ActorRef
 
   /**
-   * CRDT service operations.
-   */
+    * CRDT service operations.
+    */
   def ops: CRDTServiceOps[A, B]
 
   /**
-   * Starts the CRDT service.
-   */
+    * Starts the CRDT service.
+    */
   def start(): Unit = if (manager.isEmpty) {
     manager = Some(system.actorOf(Props(new CRDTManager)))
   }
 
   /**
-   * Stops the CRDT service.
-   */
+    * Stops the CRDT service.
+    */
   def stop(): Unit = manager.foreach { m =>
     manager = None
     system.stop(m)
   }
 
   /**
-   * Returns the current value of the CRDT identified by `id`.
-   */
+    * Returns the current value of the CRDT identified by `id`.
+    */
   def value(id: String): Future[B] = withManagerAndDispatcher { (w, d) =>
     w.ask(Get(id)).mapTo[GetReply].map(_.value)(d)
   }
 
   /**
-   * Saves a snapshot of the CRDT identified by `id`.
-   */
+    * Saves a snapshot of the CRDT identified by `id`.
+    */
   def save(id: String): Future[SnapshotMetadata] = withManagerAndDispatcher { (w, d) =>
     w.ask(Save(id)).mapTo[SaveReply].map(_.metadata)(d)
   }
 
   /**
-   * Updates the CRDT identified by `id` with given `operation`.
-   * Returns the updated value of the CRDT.
-   */
+    * Updates the CRDT identified by `id` with given `operation`.
+    * Returns the updated value of the CRDT.
+    */
   def stable(id: String, t: VectorTime): Future[String] = withManagerAndDispatcher { (w, d) =>
     w.ask(MarkStable(id, t)).mapTo[MarkStableReply].map(_.id)(d)
   }
@@ -207,6 +225,7 @@ trait CRDTService[A, B] {
     override val aggregateId =
       Some(s"${ops.zero.getClass.getSimpleName}_${crdtId}")
 
+    // TODO porque no lo puedo tipar a A?
     var crdt: A =
       ops.zero
 

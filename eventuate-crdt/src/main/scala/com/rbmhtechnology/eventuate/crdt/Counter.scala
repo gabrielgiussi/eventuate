@@ -25,21 +25,23 @@ import scala.concurrent.Future
 /**
  * Operation-based Counter CRDT.
  *
- * @param value Current counter value.
+ * @param state Current counter value.
  * @tparam A Counter value type.
  * @see [[http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf A comprehensive study of Convergent and Commutative Replicated Data Types]]
  */
-case class Counter[A: Integral](polog: POLog = POLog(), value: A) {
+case class Counter[A: Integral](polog: POLog = POLog(), state: A) extends CRDT[A] with CRDTHelper[A, Counter[A]] {
   /**
    * Adds `delta` (which can also be negative) to the counter `value` and
    * returns an updated counter.
    */
   //def update(delta: A): Counter[A] = copy(value = implicitly[Integral[A]].plus(value, delta))
+
+  override def copyCRDT(polog: POLog, state: A) = copy(polog, state)
 }
 
 object Counter {
   def apply[A: Integral]: Counter[A] =
-    Counter[A](value = implicitly[Integral[A]].zero)
+    Counter[A](state = implicitly[Integral[A]].zero)
 
   implicit def CounterServiceOps[A: Integral] = new CRDTServiceOps[Counter[A], A] {
     override def zero: Counter[A] =
@@ -49,31 +51,16 @@ object Counter {
       case UpdateOp(delta) => implicitly[Integral[A]].plus(s, delta.asInstanceOf[A])
     }
 
-    val eval: Eval[A] = (polog: POLog, state: A) => polog.log.foldLeft(state)((s: A, op: Versioned[Operation]) => a(s, op))
+    override val eval: Eval[A] = (polog: POLog, state: A) => polog.log.foldLeft(state)((s: A, op: Versioned[Operation]) => a(s, op))
 
-    val obs = (op1: Versioned[Operation], op2: Versioned[Operation]) => false
+    override val obs = (op1: Versioned[Operation], op2: Versioned[Operation]) => false
 
-    val pruneState = (s: A, o: Obsolete) => s
+    override val pruneState = (s: A, o: Obsolete) => s
 
-    val updateState = (s: A, op: Versioned[Operation]) => a(s, op)
-
-    override def value(crdt: Counter[A]): A = eval(crdt.polog, crdt.value)
+    override val updateState = (s: A, op: Versioned[Operation]) => a(s, op)
 
     override def precondition: Boolean =
       false
-
-    def effect(crdt: Counter[A], op: Operation, t: VectorTime): Counter[A] = {
-      val newPolog = crdt.polog prune (Versioned(op, t), obs) add (Versioned(op, t), obs)
-      crdt.copy(newPolog, pruneState(crdt.value, obs))
-    }
-
-    override def stable(crdt: Counter[A], t: VectorTime): Counter[A] = {
-      crdt.polog.op(t) match {
-        case Some(op) => crdt.copy(crdt.polog remove (Versioned(op, t)), updateState(crdt.value, Versioned(op, t)))
-        case None     => crdt
-      }
-
-    }
 
     def timestamps(crdt: Counter[A]): Set[VectorTime] = crdt.polog.log.map(_.vectorTimestamp)
   }

@@ -38,7 +38,7 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) {
   def prune(op: Versioned[Operation], obs: Obsolete): POLog = copy(log filter (!obs(_, op)))
 
   def add(op: Versioned[Operation], obs: Obsolete): POLog = {
-    if ((log isEmpty) || (log.exists { !obs(op, _) })) copy(log + op)
+    if ((log.isEmpty) || (log.exists { !obs(op, _) })) copy(log + op)
     else this
 
   }
