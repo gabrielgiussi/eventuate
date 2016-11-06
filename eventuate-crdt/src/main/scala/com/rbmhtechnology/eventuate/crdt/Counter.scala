@@ -17,8 +17,8 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Eval, Obsolete, Operation }
-import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
+import com.rbmhtechnology.eventuate.Versioned
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 import scala.concurrent.Future
 
@@ -29,7 +29,7 @@ import scala.concurrent.Future
  * @tparam A Counter value type.
  * @see [[http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf A comprehensive study of Convergent and Commutative Replicated Data Types]]
  */
-case class Counter[A: Integral](polog: POLog = POLog(), state: A) extends CRDT[A] with CRDTHelper[A, Counter[A]] {
+case class Counter[A: Integral](override val polog: POLog = POLog(), override val state: A) extends CRDT[A] with CRDTHelper[A, Counter[A]] {
   /**
    * Adds `delta` (which can also be negative) to the counter `value` and
    * returns an updated counter.
@@ -37,6 +37,15 @@ case class Counter[A: Integral](polog: POLog = POLog(), state: A) extends CRDT[A
   //def update(delta: A): Counter[A] = copy(value = implicitly[Integral[A]].plus(value, delta))
 
   override def copyCRDT(polog: POLog, state: A) = copy(polog, state)
+
+  // FIXME funcion duplicada
+  val a = (s: A, op: Versioned[Operation]) => op.value match {
+    case UpdateOp(delta) => implicitly[Integral[A]].plus(s, delta.asInstanceOf[A])
+  }
+
+  override def eval = {
+    polog.log.foldLeft(state)((s: A, op: Versioned[Operation]) => a(s, op))
+  }
 }
 
 object Counter {
@@ -47,22 +56,24 @@ object Counter {
     override def zero: Counter[A] =
       Counter.apply[A]
 
+    //override val eval: Eval[A] = (polog: POLog, state: A) => polog.log.foldLeft(state)((s: A, op: Versioned[Operation]) => a(s, op))
+
+    override val obs = (op1: Versioned[Operation], op2: Versioned[Operation]) => false
+
+    override val pruneState = (op: Operation, s: A, o: Obsolete) => s
+
+    override val updateState = (s: A, op: Versioned[Operation]) => a(s, op)
+
+    // FIXME funcion duplicada
+    // como puedo compartir esta funcion entre la clase Counter y el Companion Object Counter?
+    // No puedo definirla implicita en el Companion Object porque no veo el tipo generico A!
     val a = (s: A, op: Versioned[Operation]) => op.value match {
       case UpdateOp(delta) => implicitly[Integral[A]].plus(s, delta.asInstanceOf[A])
     }
 
-    override val eval: Eval[A] = (polog: POLog, state: A) => polog.log.foldLeft(state)((s: A, op: Versioned[Operation]) => a(s, op))
-
-    override val obs = (op1: Versioned[Operation], op2: Versioned[Operation]) => false
-
-    override val pruneState = (s: A, o: Obsolete) => s
-
-    override val updateState = (s: A, op: Versioned[Operation]) => a(s, op)
-
     override def precondition: Boolean =
       false
 
-    def timestamps(crdt: Counter[A]): Set[VectorTime] = crdt.polog.log.map(_.vectorTimestamp)
   }
 }
 

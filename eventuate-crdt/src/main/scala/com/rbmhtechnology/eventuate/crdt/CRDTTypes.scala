@@ -24,13 +24,13 @@ package object CRDTTypes {
   // primer parametros = new Pair (t,o)
   type Obsolete = (Versioned[Operation], Versioned[Operation]) => Boolean
 
-  type PruneState[A] = (A, Obsolete) => A
+  type PruneState[A] = (Operation, A, Obsolete) => A
 
   type UpdateState[A] = (A, Versioned[Operation]) => A
 
   type Eval[A] = (POLog, A) => A
 
-  type Operation = AnyRef
+  type Operation = Any
 
   //type State = Any
 

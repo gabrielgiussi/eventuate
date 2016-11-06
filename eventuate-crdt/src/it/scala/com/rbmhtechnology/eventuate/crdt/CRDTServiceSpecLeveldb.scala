@@ -45,4 +45,35 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
     }
   }
 
+  "An ORSetService" must {
+    "return the default value of an ORSet" in {
+      val service = new ORSetService[Int]("a", log)
+      service.value("a").await should be(Set())
+    }
+    "add an entry" in {
+      val service = new ORSetService[Int]("a", log)
+      service.add("a", 1).await should be(Set(1))
+      service.value("a").await should be(Set(1))
+    }
+    "mask duplicates" in {
+      val service = new ORSetService[Int]("a", log)
+      service.add("a", 1).await should be(Set(1))
+      service.add("a", 1).await should be(Set(1))
+      service.value("a").await should be(Set(1))
+    }
+    "remove an entry" in {
+      val service = new ORSetService[Int]("a", log)
+      service.add("a", 1).await should be(Set(1))
+      service.remove("a", 1).await should be(Set())
+      service.value("a").await should be(Set())
+    }
+    "remove duplicates" in {
+      val service = new ORSetService[Int]("a", log)
+      service.add("a", 1).await should be(Set(1))
+      service.add("a", 1).await should be(Set(1))
+      service.remove("a", 1).await should be(Set())
+      service.value("a").await should be(Set())
+    }
+  }
+
 }

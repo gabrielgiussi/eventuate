@@ -47,7 +47,8 @@ trait CRDTServiceOps[A <: CRDT[B] with CRDTHelper[B,A],B] {
   /**
     * Returns the CRDT value (for example, the entries of an OR-Set)
     */
-  def value(crdt: A): B = eval(crdt.polog, crdt.state)
+  //def value(crdt: A): B = eval(crdt.polog, crdt.state)
+  def value(crdt: A): B = crdt.eval
 
   /**
     * Must return `true` if CRDT checks preconditions. Should be overridden to return
@@ -67,7 +68,7 @@ trait CRDTServiceOps[A <: CRDT[B] with CRDTHelper[B,A],B] {
   //def effect(crdt: A, operation: Any, event: DurableEvent): A
   final def effect(crdt: A, op: Operation, t: VectorTime): A = {
     val newPolog = crdt.polog prune (Versioned(op, t), obs) add (Versioned(op, t), obs)
-    crdt.copyCRDT(newPolog, pruneState(crdt.state, obs))
+    crdt.copyCRDT(newPolog, pruneState(op, crdt.state, obs))
   }
 
   final def stable(crdt: A, t: VectorTime): A = {
@@ -78,7 +79,7 @@ trait CRDTServiceOps[A <: CRDT[B] with CRDTHelper[B,A],B] {
 
   }
 
-  val eval: Eval[B]
+//  val eval: Eval[B]
 
   val obs: Obsolete
 
@@ -87,7 +88,7 @@ trait CRDTServiceOps[A <: CRDT[B] with CRDTHelper[B,A],B] {
   implicit val updateState: UpdateState[B]
 
   /** For testing purposes only */
-  def timestamps(crdt: A): Set[VectorTime]
+  def timestamps(crdt: A): Set[VectorTime] = crdt.polog.log.map(_.vectorTimestamp)
 }
 
 object CRDTService {
@@ -225,7 +226,6 @@ trait CRDTService[A <: CRDT[B] with CRDTHelper[B,A], B] {
     override val aggregateId =
       Some(s"${ops.zero.getClass.getSimpleName}_${crdtId}")
 
-    // TODO porque no lo puedo tipar a A?
     var crdt: A =
       ops.zero
 
@@ -273,7 +273,7 @@ trait CRDTService[A <: CRDT[B] with CRDTHelper[B,A], B] {
     override def onSnapshot = {
       case snapshot =>
         crdt = snapshot.asInstanceOf[A]
-        context.parent ! OnChange(crdt, null)
+        context.parent ! OnChange(crdt, None)
     }
   }
 

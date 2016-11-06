@@ -19,8 +19,14 @@ option optimize_for = SPEED;
 
 import "CommonFormats.proto";
 
-message ORSetFormat {
+message POLogFormat {
   repeated VersionedFormat versionedEntries = 1;
+}
+
+
+message ORSetFormat {
+  optional POLogFormat polog = 1;
+  repeated bytes state = 2; // TODO should use PayloadFormat?
 }
 
 message ORCartFormat {
@@ -58,7 +64,7 @@ message AddOpFormat {
 
 message RemoveOpFormat {
   optional PayloadFormat entry = 1;
-  repeated VectorTimeFormat timestamps = 2;
+  //repeated VectorTimeFormat timestamps = 2;
 }
 
 message StableFormat {

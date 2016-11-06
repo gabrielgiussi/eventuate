@@ -24,9 +24,12 @@ import com.rbmhtechnology.eventuate.serializer.SerializationContext
 import org.scalatest._
 
 object CRDTSerializerSpec {
+  def removeOp(payload: ExamplePayload): RemoveOp =
+    RemoveOp(payload, Set(VectorTime("s" -> 19L), VectorTime("t" -> 20L)))
 }
 
 class CRDTSerializerSpec extends WordSpec with Matchers with BeforeAndAfterAll {
+  import CRDTSerializerSpec._
 
   val context = new SerializationContext(
     MultiLocationConfig.create(),
@@ -54,6 +57,34 @@ class CRDTSerializerSpec extends WordSpec with Matchers with BeforeAndAfterAll {
       val expected = initial
 
       serialization.deserialize(serialization.serialize(initial).get, classOf[ValueUpdated]).get should be(expected)
+    }
+    "support AddOp serialization with default payload serialization" in {
+      val serialization = SerializationExtension(systems(0))
+
+      val initial = AddOp(ExamplePayload("foo", "bar"))
+      val expected = initial
+
+      serialization.deserialize(serialization.serialize(initial).get, classOf[AddOp]).get should be(expected)
+    }
+    "support AddOp serialization with custom payload serialization" in serializations.tail.foreach { serialization =>
+      val initial = AddOp(ExamplePayload("foo", "bar"))
+      val expected = AddOp(ExamplePayload("bar", "foo"))
+
+      serialization.deserialize(serialization.serialize(initial).get, classOf[AddOp]).get should be(expected)
+    }
+    "support RemoveOp serialization with default payload serialization" in {
+      val serialization = SerializationExtension(systems(0))
+
+      val initial = removeOp(ExamplePayload("foo", "bar"))
+      val expected = initial
+
+      serialization.deserialize(serialization.serialize(initial).get, classOf[RemoveOp]).get should be(expected)
+    }
+    "support RemoveOp serialization with custom payload serialization" in serializations.tail.foreach { serialization =>
+      val initial = removeOp(ExamplePayload("foo", "bar"))
+      val expected = removeOp(ExamplePayload("bar", "foo"))
+
+      serialization.deserialize(serialization.serialize(initial).get, classOf[RemoveOp]).get should be(expected)
     }
   }
 }
