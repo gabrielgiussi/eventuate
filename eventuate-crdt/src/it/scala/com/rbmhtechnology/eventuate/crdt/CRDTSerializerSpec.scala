@@ -80,11 +80,5 @@ class CRDTSerializerSpec extends WordSpec with Matchers with BeforeAndAfterAll {
 
       serialization.deserialize(serialization.serialize(initial).get, classOf[RemoveOp]).get should be(expected)
     }
-    "support RemoveOp serialization with custom payload serialization" in serializations.tail.foreach { serialization =>
-      val initial = removeOp(ExamplePayload("foo", "bar"))
-      val expected = removeOp(ExamplePayload("bar", "foo"))
-
-      serialization.deserialize(serialization.serialize(initial).get, classOf[RemoveOp]).get should be(expected)
-    }
   }
 }
