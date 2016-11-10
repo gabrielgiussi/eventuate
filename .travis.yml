@@ -7,9 +7,11 @@ cache:
     - $HOME/.ivy2/cache
     - $HOME/.sbt/boot/
 script:
+  - .travis/compile-all.sh ++$TRAVIS_SCALA_VERSION
   - .travis/test-core.sh ++$TRAVIS_SCALA_VERSION
   - .travis/test-leveldb.sh ++$TRAVIS_SCALA_VERSION
   - .travis/test-crdt.sh ++$TRAVIS_SCALA_VERSION
+  - .travis/test-stream.sh ++$TRAVIS_SCALA_VERSION
   - .travis/test-spark.sh ++$TRAVIS_SCALA_VERSION
   - .travis/test-vertx.sh ++$TRAVIS_SCALA_VERSION
   - find $HOME/.sbt -name "*.lock" | xargs rm

@@ -226,7 +226,8 @@ object ReplicationEndpoint {
    * @param applicationName Name of the application that creates this replication endpoint.
    * @param applicationVersion Version of the application that creates this replication endpoint.
    */
-  def create(id: String,
+  def create(
+    id: String,
     logNames: JSet[String],
     logFactory: JFunction[String, Props],
     connections: JSet[ReplicationConnection],
@@ -361,14 +362,17 @@ class ReplicationEndpoint(
   }
 
   private def logLocalState(info: ReplicationEndpointInfo): Unit = {
-    system.log.info("Disaster recovery initiated for endpoint {}. Sequence numbers of local logs are: {}",
+    system.log.info(
+      "Disaster recovery initiated for endpoint {}. Sequence numbers of local logs are: {}",
       info.endpointId, sequenceNrsLogString(info))
-    system.log.info("Need to reset replication progress stored at remote replicas {}",
+    system.log.info(
+      "Need to reset replication progress stored at remote replicas {}",
       connectors.map(_.remoteAcceptor).mkString(","))
   }
 
   private def logLinksToBeRecovered(links: Set[RecoveryLink], linkType: String): Unit = {
-    system.log.info("Start recovery for {} links: (from remote source log (target seq no) -> local target log (initial seq no))\n{}",
+    system.log.info(
+      "Start recovery for {} links: (from remote source log (target seq no) -> local target log (initial seq no))\n{}",
       linkType, links.map(l => s"(${l.replicationLink.source.logId} (${l.remoteSequenceNr}) -> ${l.replicationLink.target.logName} (${l.localSequenceNr}))").mkString(", "))
   }
 
@@ -659,14 +663,15 @@ private class Replicator(target: ReplicationTarget, source: ReplicationSource, f
   }
 
   val writing: Receive = {
-    case writeSuccess @ ReplicationWriteSuccess(_, storedReplicationProgress, _, _, false) =>
+    case writeSuccess @ ReplicationWriteSuccess(_, _, false) =>
       notifyLocalAcceptor(writeSuccess)
       context.become(idle)
       scheduleRead()
-    case writeSuccess @ ReplicationWriteSuccess(_, storedReplicationProgress, _, currentTargetVersionVector, true) =>
+    case writeSuccess @ ReplicationWriteSuccess(_, metadata, true) =>
+      val sourceMetadata = metadata(source.logId)
       notifyLocalAcceptor(writeSuccess)
       context.become(reading)
-      read(storedReplicationProgress, currentTargetVersionVector)
+      read(sourceMetadata.replicationProgress, sourceMetadata.currentVersionVector)
     case ReplicationWriteFailure(cause) =>
       log.warning("replication write failed: {}", cause)
       context.become(idle)
@@ -709,7 +714,7 @@ private class Replicator(target: ReplicationTarget, source: ReplicationSource, f
   private def write(events: Seq[DurableEvent], replicationProgress: Long, currentSourceVersionVector: VectorTime, continueReplication: Boolean): Unit = {
     implicit val timeout = Timeout(settings.writeTimeout)
 
-    target.log ? ReplicationWrite(events, replicationProgress, source.logId, currentSourceVersionVector, continueReplication) recover {
+    target.log ? ReplicationWrite(events, Map(source.logId -> ReplicationMetadata(replicationProgress, currentSourceVersionVector)), continueReplication) recover {
       case t => ReplicationWriteFailure(t)
     } pipeTo self
   }
