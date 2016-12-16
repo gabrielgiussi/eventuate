@@ -97,11 +97,11 @@ object ORCart {
         super.prepare(crdt, op)
     }
 
-    override def effect(crdt: ORCart[A], operation: Any, event: DurableEvent): ORCart[A] = operation match {
+    override def effect(crdt: ORCart[A], operation: Any, event: DurableEvent): (ORCart[A], Option[Apology]) = operation match {
       case RemoveOp(_, timestamps) =>
-        crdt.remove(timestamps)
+        (crdt.remove(timestamps), None)
       case AddOp(ORCartEntry(key, quantity)) =>
-        crdt.add(key.asInstanceOf[A], quantity, event.vectorTimestamp)
+        (crdt.add(key.asInstanceOf[A], quantity, event.vectorTimestamp), None)
     }
   }
 }

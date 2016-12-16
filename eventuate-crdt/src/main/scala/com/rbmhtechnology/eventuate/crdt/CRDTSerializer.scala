@@ -40,6 +40,7 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private val AssignOpClass = classOf[AssignOp]
   private val AddOpClass = classOf[AddOp]
   private val RemoveOpClass = classOf[RemoveOp]
+  private val ApologyClass = classOf[Apology]
 
   override def identifier: Int = 22567
   override def includeManifest: Boolean = true
@@ -65,6 +66,7 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
       addOpFormatBuilder(o).build().toByteArray
     case o: RemoveOp =>
       removeOpFormatBuilder(o).build().toByteArray
+    case a: Apology => apologyFormatBuilder(a).build().toByteArray
     case _ =>
       throw new IllegalArgumentException(s"can't serialize object of type ${o.getClass}")
   }
@@ -92,6 +94,7 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
         addOp(AddOpFormat.parseFrom(bytes))
       case RemoveOpClass =>
         removeOp(RemoveOpFormat.parseFrom(bytes))
+      case ApologyClass => apology(ApologyFormat.parseFrom(bytes))
       case _ =>
         throw new IllegalArgumentException(s"can't deserialize object of type ${clazz}")
     }
@@ -161,6 +164,10 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
     builder
   }
 
+  private def apologyFormatBuilder(ap: Apology): ApologyFormat.Builder = {
+    ApologyFormat.newBuilder.setUndo(commonSerializer.versionedFormatBuilder(ap.undo)).setEntry(commonSerializer.versionedFormatBuilder(ap.entry))
+  }
+
   // --------------------------------------------------------------------------------
   //  fromBinary helpers
   // --------------------------------------------------------------------------------
@@ -210,4 +217,8 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
 
     RemoveOp(payloadSerializer.payload(opFormat.getEntry), timestamps)
   }
+
+  private def apology(apologyFormat: ApologyFormat): Apology =
+    Apology(commonSerializer.versioned(apologyFormat.getUndo), commonSerializer.versioned(apologyFormat.getEntry))
+
 }

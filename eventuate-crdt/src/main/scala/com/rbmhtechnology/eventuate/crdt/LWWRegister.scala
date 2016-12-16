@@ -71,8 +71,8 @@ object LWWRegister {
     override def precondition: Boolean =
       false
 
-    override def effect(crdt: LWWRegister[A], operation: Any, event: DurableEvent): LWWRegister[A] = operation match {
-      case AssignOp(value) => crdt.assign(value.asInstanceOf[A], event.vectorTimestamp, event.systemTimestamp, event.emitterId)
+    override def effect(crdt: LWWRegister[A], operation: Any, event: DurableEvent): (LWWRegister[A], Option[Apology]) = operation match {
+      case AssignOp(value) => (crdt.assign(value.asInstanceOf[A], event.vectorTimestamp, event.systemTimestamp, event.emitterId), None)
     }
   }
 

@@ -64,8 +64,8 @@ object MVRegister {
     override def precondition: Boolean =
       false
 
-    override def effect(crdt: MVRegister[A], operation: Any, event: DurableEvent): MVRegister[A] = operation match {
-      case AssignOp(value) => crdt.assign(value.asInstanceOf[A], event.vectorTimestamp, event.systemTimestamp, event.emitterId)
+    override def effect(crdt: MVRegister[A], operation: Any, event: DurableEvent): (MVRegister[A], Option[Apology]) = operation match {
+      case AssignOp(value) => (crdt.assign(value.asInstanceOf[A], event.vectorTimestamp, event.systemTimestamp, event.emitterId), None)
     }
   }
 }

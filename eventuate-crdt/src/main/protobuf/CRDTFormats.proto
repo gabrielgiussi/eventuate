@@ -57,6 +57,11 @@ message AddOpFormat {
 }
 
 message RemoveOpFormat {
-  optional PayloadFormat entry = 1;
-  repeated VectorTimeFormat timestamps = 2;
+   optional PayloadFormat entry = 1;
+   repeated VectorTimeFormat timestamps = 2;
+}
+
+message ApologyFormat {
+  optional VersionedFormat undo = 1;
+  optional VersionedFormat entry = 2;
 }

@@ -63,8 +63,12 @@ trait CRDTServiceOps[A, B] {
   /**
    * Update phase 2 ("downstream").
    */
-  def effect(crdt: A, operation: Any, event: DurableEvent): A
+  def effect(crdt: A, operation: Any, event: DurableEvent): (A, Option[Apology])
 }
+
+// Tal vez Versioned no me alcance y necesite la op (porque por ejemplo no puedo saber si es un AddOp o un RemoveOp)
+// Pero las Op no las mantengo en el state, asi que dependeria de la logica del CRDT saber que Op se esta "deshaciendo" (undo)
+case class Apology(undo: Versioned[_], entry: Versioned[_]) extends CRDTFormat
 
 object CRDTService {
   /**
@@ -176,7 +180,7 @@ trait CRDTService[A, B] {
 
   private case class OnChange(crdt: A, operation: Any)
 
-  private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor {
+  private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor with PersistOnEvent {
     override val id =
       s"${serviceId}_${crdtId}"
 
@@ -215,7 +219,14 @@ trait CRDTService[A, B] {
 
     override def onEvent = {
       case evt @ ValueUpdated(operation) =>
-        crdt = ops.effect(crdt, operation, lastHandledEvent)
+        ops.effect(crdt, operation, lastHandledEvent) match {
+          case (c, Some(x)) => {
+            crdt = c
+            //println("Se creo la apologie " + x.user + " en la location " + lastHandledEvent.localLogId)
+            persistOnEvent(x)
+          }
+          case (c, None) => crdt = c
+        }
         context.parent ! OnChange(crdt, operation)
     }
 

@@ -53,8 +53,8 @@ object Counter {
     override def precondition: Boolean =
       false
 
-    override def effect(crdt: Counter[A], operation: Any, event: DurableEvent): Counter[A] = operation match {
-      case UpdateOp(delta) => crdt.update(delta.asInstanceOf[A])
+    override def effect(crdt: Counter[A], operation: Any, event: DurableEvent): (Counter[A], Option[Apology]) = operation match {
+      case UpdateOp(delta) => (crdt.update(delta.asInstanceOf[A]), None)
     }
   }
 }

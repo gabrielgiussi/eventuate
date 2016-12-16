@@ -16,32 +16,30 @@
 
 package com.rbmhtechnology.eventuate.crdt
 
-import java.util.Date
-
-import com.rbmhtechnology.eventuate.{ Versioned, DurableEvent, VectorTime }
+import akka.actor.{ ActorRef, ActorSystem }
+import com.rbmhtechnology.eventuate.{ DurableEvent, VectorTime, Versioned }
 
 import scala.collection.immutable.Set
+import scala.concurrent.Future
 
-case class CERMatch(date: Date = null, orSet: ORSet[String] = ORSet.apply[String]) extends CRDTFormat {
+case class CERMatch(orSet: ORSet[String] = ORSet.apply[String]) extends CRDTFormat {
 
-  def value: Match = Match(date, orSet.value)
+  def value: Set[String] = orSet.value
 
   def add(player: String, timestamp: VectorTime): (CERMatch, Option[Versioned[String]]) = {
     val updatedOrSet = orSet.add(player, timestamp)
     if (orSet.value.size < CERMatch.MATCH_SIZE)
-      (copy(date, updatedOrSet), None)
+      (copy(updatedOrSet), None)
     else {
       val removed = updatedOrSet.versionedEntries.toVector.sorted(CERMatch.CERMatchOrdering).last
-      (copy(date, updatedOrSet.remove(updatedOrSet.prepareRemove(removed.value))), Some(removed))
+      (copy(updatedOrSet.remove(updatedOrSet.prepareRemove(removed.value))), Some(removed))
     }
   }
 
   def prepareRemove(entry: String): Set[VectorTime] = orSet.prepareRemove(entry)
 
-  def remove(timestamps: Set[VectorTime]): CERMatch = copy(date, orSet.remove(timestamps))
+  def remove(timestamps: Set[VectorTime]): CERMatch = copy(orSet.remove(timestamps))
 }
-
-case class Match(date: Date, players: Set[String] = Set.empty)
 
 object CERMatch {
   def apply(): CERMatch =
@@ -60,15 +58,15 @@ object CERMatch {
         x.systemTimestamp.compareTo(y.systemTimestamp)
   }
 
-  implicit def CERMatchServiceOps = new CRDTServiceOps[CERMatch, Match] {
+  implicit def CERMatchServiceOps = new CRDTServiceOps[CERMatch, Set[String]] {
     override def zero: CERMatch =
       CERMatch.apply()
 
-    override def value(crdt: CERMatch): Match = crdt.value
+    override def value(crdt: CERMatch): Set[String] = crdt.value
 
     override def prepare(crdt: CERMatch, operation: Any): Option[Any] = operation match {
       //case op @ RemoveOp(entry, _) => ??
-      case op @ AddOp(e) if (crdt.value.players.size < MATCH_SIZE) => orSetOps.prepare(crdt.orSet, operation)
+      case op @ AddOp(e) if (crdt.value.size < MATCH_SIZE) => orSetOps.prepare(crdt.orSet, operation)
       case _ => None
     }
 
@@ -76,10 +74,29 @@ object CERMatch {
       case RemoveOp(_, timestamps) => (crdt.remove(timestamps), None)
       case AddOp(entry) =>
         crdt.add(entry.asInstanceOf[String], event.vectorTimestamp) match {
-          case (m, Some(removed)) => (m, Some(Apology(removed, entry)))
+          case (m, Some(removed)) => (m, Some(Apology(removed, Versioned(entry, event.vectorTimestamp))))
           case (m, None)          => (m, None)
         }
     }
   }
+
+}
+
+class MatchService(val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[CERMatch, Set[String]])
+  extends CRDTService[CERMatch, Set[String]] {
+
+  /**
+   * Adds `entry` to the OR-Set identified by `id` and returns the updated entry set.
+   */
+  def add(id: String, entry: String): Future[Set[String]] =
+    op(id, AddOp(entry))
+
+  /**
+   * Removes `entry` from the OR-Set identified by `id` and returns the updated entry set.
+   */
+  def remove(id: String, entry: String): Future[Set[String]] =
+    op(id, RemoveOp(entry))
+
+  start()
 
 }
