@@ -25,6 +25,7 @@ import scala.concurrent.Future
 
 case class ORSet[A](override val polog: POLog = POLog(), override val state: Set[A] = Set.empty[A]) extends CRDT[Set[A]] with CRDTHelper[Set[A], ORSet[A]] {
 
+  // TODO realmente me sirve que este metodo este en los CRDT?
   override def copyCRDT(polog: POLog, state: Set[A]): ORSet[A] = copy(polog, state)
 
   override def eval = polog.log.foldLeft(state)((s: Set[A], op: Versioned[Operation]) => op.value match {

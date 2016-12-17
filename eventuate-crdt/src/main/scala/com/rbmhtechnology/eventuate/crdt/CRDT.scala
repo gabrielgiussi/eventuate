@@ -27,6 +27,6 @@ trait CRDT[A] extends CRDTFormat {
 
 }
 
-trait CRDTHelper[A,T <: CRDT[A]] {
+trait CRDTHelper[A, T <: CRDT[A]] {
   def copyCRDT(pOLog: POLog, state: A): T
 }

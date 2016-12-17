@@ -20,7 +20,7 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
 
 // set o map?
-case class POLog(log: Set[Versioned[Operation]] = Set.empty) {
+case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat {
 
   // puedo asegurar que esta el timestamp y remover el Option?
   // TODO me conviene devolver Versioned[Operation]?

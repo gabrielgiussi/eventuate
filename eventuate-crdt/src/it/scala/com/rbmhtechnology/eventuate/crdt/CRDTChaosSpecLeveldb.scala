@@ -95,7 +95,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
 
   "A replicated ORSet" must {
     "converge under concurrent updates and write failures" in {
-      val numUpdates = 100
+      val numUpdates = 10
 
       val locationA = location("A", customConfig = customConfig)
       val locationB = location("B", customConfig = customConfig)

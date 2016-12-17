@@ -16,13 +16,18 @@
 
 package com.rbmhtechnology.eventuate.crdt
 
+import java.io.{ IOException, _ }
+import java.util.logging.Logger
+
 import akka.actor._
 import akka.serialization.Serializer
+import com.google.protobuf.ByteString
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
-import com.rbmhtechnology.eventuate.{ Versioned, VectorTime }
+import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
 import com.rbmhtechnology.eventuate.crdt.CRDTFormats._
 import com.rbmhtechnology.eventuate.crdt.CRDTService._
 import com.rbmhtechnology.eventuate.serializer.CommonSerializer
+
 import scala.collection.JavaConverters._
 
 class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
@@ -83,9 +88,7 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private def pologFormatBuilder(polog: POLog): POLogFormat.Builder = {
     val builder = POLogFormat.newBuilder
 
-    polog.log.foreach { ve =>
-      builder.addVersionedEntries(commonSerializer.versionedFormatBuilder(ve))
-    }
+    polog.log.foreach { ve => builder.addVersionedEntries(commonSerializer.versionedFormatBuilder(ve)) }
 
     builder
   }
@@ -93,7 +96,23 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private def orSetFormatBuilder(orSet: ORSet[_]): ORSetFormat.Builder = {
     val builder = ORSetFormat.newBuilder
     builder.setPolog(pologFormatBuilder(orSet.polog))
-
+    orSet.state.foreach(x => {
+      val bos = new ByteArrayOutputStream()
+      try {
+        val out = new ObjectOutputStream(bos);
+        out.writeObject(x);
+        out.flush();
+        builder.addState(ByteString.copyFrom(bos.toByteArray()))
+      } finally {
+        try {
+          bos.close();
+        } catch {
+          case ex: IOException => println("IOException")
+        }
+      }
+    }
+    )
+    //builder.addAllState(orSet.state.map(x => ByteString.copyFromUtf8(x.toString)).toIterable)
     // TODO serialize state
 
     builder
@@ -122,12 +141,28 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
     val rs = pologFormat.getVersionedEntriesList.iterator.asScala.foldLeft(Set.empty[Versioned[Operation]]) {
       case (acc, r) => acc + commonSerializer.versioned(r)
     }
+
     POLog(rs)
   }
 
   private def orSet(orSetFormat: ORSetFormat): ORSet[Any] = {
-    // TODO deserialize state
-    new ORSet(polog(orSetFormat.getPolog), Set.empty[Any])
+    val state: scala.collection.mutable.Buffer[Any] = orSetFormat.getStateList.asScala.map(x => {
+      val bis = new ByteArrayInputStream(x.toByteArray)
+      val in = new ObjectInputStream(bis)
+      try {
+        in.readObject()
+      } finally {
+        try {
+          if (in != null) {
+            in.close()
+          }
+        } catch {
+          case e: IOException => println("IOException")
+        }
+      }
+      null
+    })
+    ORSet(polog(orSetFormat.getPolog), state.toSet)
   }
 
   private def valueUpdated(valueUpdatedFormat: ValueUpdatedFormat): ValueUpdated =

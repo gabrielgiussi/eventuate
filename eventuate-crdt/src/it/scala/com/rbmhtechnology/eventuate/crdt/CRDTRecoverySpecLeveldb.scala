@@ -54,7 +54,8 @@ class CRDTRecoverySpecLeveldb extends TestKit(ActorSystem("test")) with WordSpec
     "recover CRDT instances from snapshots" in {
       val service1 = service("a")
       service1.add("x", 1)
-      service1.add("x", 2)
+      // Await before save to not depend on actor's stateSync flag
+      service1.add("x", 2).await
       service1.save("x").await
       service1.add("x", 3)
       probe.expectMsg(Set(1))
