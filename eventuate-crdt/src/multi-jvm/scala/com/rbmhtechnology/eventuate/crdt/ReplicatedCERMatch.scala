@@ -74,7 +74,7 @@ abstract class ReplicatedCERMatchSpec extends MultiNodeSpec(ReplicatedCERMatchCo
         enterBarrier("repair")
         testConductor.passThrough(nodeA, nodeB, Direction.Both).await
 
-        probe.expectMsg(Set("Gallardo", "Ortega","Astrada"))
+        probe.expectMsg(Set("Gallardo", "Funes Mori","Astrada"))
       }
 
       runOn(nodeB) {
@@ -91,12 +91,12 @@ abstract class ReplicatedCERMatchSpec extends MultiNodeSpec(ReplicatedCERMatchCo
         enterBarrier("broken")
 
         // this is concurrent to service.add("x", 1) on node A
-        service.remove("match1", "Ortega")
+        service.add("match1", "Ortega")
         probe.expectMsg(Set("Gallardo", "Funes Mori","Ortega"))
 
         enterBarrier("repair")
 
-        probe.expectMsg(Set("Gallardo", "Ortega","Astrada"))
+        probe.expectMsg(Set("Gallardo", "Funes Mori","Astrada"))
       }
 
       enterBarrier("finish")
