@@ -16,7 +16,13 @@ script:
   - .travis/test-vertx.sh ++$TRAVIS_SCALA_VERSION
   - find $HOME/.sbt -name "*.lock" | xargs rm
   - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
+after_success:
+- if [ "${TRAVIS_PULL_REQUEST}" = "false" ] && [ "${TRAVIS_BRANCH}" = "cerdt" ]; then sbt ++$TRAVIS_SCALA_VERSION publish; fi
 scala:
   - 2.11.7
 jdk:
   - oraclejdk8
+env:
+  global:
+  - secure: LvakC7jIQDFJfBPHZ0S3ODhWym0lrqScQgcEaYVgn9EEvyEOhbNl8xkO5IFJRB7pUQ7h2ao4BsTQ1sJ/C74qaQdVAOfJS4AURvCmrG3AXdMeFPBEu6s1mbTxR/jfyDV7u3eD1l1Ji4MbNxwKtQkKk3wH+CWhEf6nsO1IZcYYYmWFcmpYiJ36GizEWoBuMGzTSrlTS/Ew1jAn4iKlanemkN/vKOgQ9padYPTe6EVJNiYe/+Oq0YApnnsKw2wAFVvayoBSN1IgvzzGaR2Zu0oXdTOjFOoh1HvJP4/g5dZYnXbM7zhXzXTK5evQ49d0CK2LYB6CxRG92ANS1po2SAYglJRki4Q0NiEXORShGXftygu0MY9l7MutVbSKm58kbVdxHnuna9WyBkb2FraiC2erLyG8u5zRRK3tO6DAu0xTI1i/xaPonm/MFqIz2HQfWm09qvYkKUGhe4Y2wap/i/nyoqmcscMnXq3O7luryMgz6xVzZ92gYMNDTay40h629NubVJH9/7J3S2jx0z4GVKBZCb2Rvh7BuSof406BAgSYQRg0zyWnP7+Ms663PYPIsU1ti6jS8mzfvkmi9w/2D3VQQVB+CGrnay9sc0f4/eqzLJtFgdM925q99dnICvTZXRx3U4LekJgFmSPVmJMW77kcQuLtBkxfwZ6fXF1ebBajJn4=
+  - secure: LgLvgEv4Iuzix5xuJ+gSKHdqjICyDhQ1kie00WnJFlVyNwdSEsAAYUc5FBP47C/IMUGmda5aFy1PQV1qCVcQRUEIegEdxgTHruejqP8Kmqtty+5Kn/2HZ1RThs2J5n/3c91/8fhAlNttlGKfc7Ke+Re67V8TfWsRI1Jt24BffGt1XJ5bFzb49xnrRhCOip2Py65YqVeQB89ipmwXGuwgl6FgFkIRz8kHi09H8xqnIE4frRAWcenF7FFuR1HEy1tKIZD2CGcPR2pfRMESm7yMMexyBmrW6+YfNYv28TBPnz4+FgNiBA8xomRHpnSbWPEQPGQoNJ1OHvmkDEw65lm7CA5qZ/OQ6fi4e/9w6eaRYdAFtPWBvd2Spa15skA5RkUc9nBTOcsz0Rm9bI1GN6U/2s3a2BibsOFfAQ4xBbdHj1A8D9hyXeSlawOLZ3Tyj7hsQ1A+iqoTOm5zi8VZk6m0JIrB3U0GsQ6QZDNA55D3Vkh2xcTqoZkyOUOAJKJT4wSX8BKVUdPupLzoHOtdaD40muX4f6aj3NCND3G2C1tylYbNjl3rdMrqNbiW2wbXNgg7f3uTp2D9Cutx6ArspRODmA9wcqzIilmxSNEd3/7peEiR+IAk1NV/x9cRqK423DtPbtBZAWE+iariY/Tg0xgE//uKnGf+WHPFurU6MmPjyHQ=

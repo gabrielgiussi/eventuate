@@ -180,6 +180,8 @@ trait CRDTService[A, B] {
 
   private case class OnChange(crdt: A, operation: Any)
 
+  private case class OnApology(crdt: A, apology: Apology)
+
   private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor with PersistOnEvent {
     override val id =
       s"${serviceId}_${crdtId}"
@@ -222,12 +224,14 @@ trait CRDTService[A, B] {
         ops.effect(crdt, operation, lastHandledEvent) match {
           case (c, Some(x)) => {
             crdt = c
-            //println("Se creo la apologie " + x.user + " en la location " + lastHandledEvent.localLogId)
+            // CHequear aca si lastHandledEvent.localLogId == currentLocalId (no se como obtenerlo)
+            // en cuyo caso no persisto la Apology? O lo chequeo en ops.effect para directamente no armar la Apology?
             persistOnEvent(x)
           }
           case (c, None) => crdt = c
         }
         context.parent ! OnChange(crdt, operation)
+      case ap: Apology => context.parent ! OnApology(crdt, ap)
     }
 
     override def onSnapshot = {
@@ -245,6 +249,7 @@ trait CRDTService[A, B] {
         crdtActor(cmd.id) forward cmd
       case n @ OnChange(crdt, operation) =>
         onChange(crdt, operation)
+      case a @ OnApology(crdt, apology) => onApology(crdt, apology)
       case Terminated(crdt) =>
         crdts.find(pair => pair._2 == crdt).map(_._1).foreach { id =>
           crdts = crdts - id
@@ -263,4 +268,6 @@ trait CRDTService[A, B] {
 
   /** For testing purposes only */
   private[crdt] def onChange(crdt: A, operation: Any): Unit = ()
+
+  private[crdt] def onApology(crdt: A, apology: Apology): Unit = ()
 }
