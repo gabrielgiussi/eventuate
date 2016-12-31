@@ -9,7 +9,7 @@ import ProjectDependencies._
 
 version in ThisBuild := "0.9-SNAPSHOT"
 
-organization in ThisBuild := "com.rbmhtechnology"
+organization in ThisBuild := "oss.gabrielgiussi"
 
 scalaVersion in ThisBuild := "2.11.8"
 
