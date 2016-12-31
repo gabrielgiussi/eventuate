@@ -17,7 +17,7 @@ script:
   - find $HOME/.sbt -name "*.lock" | xargs rm
   - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
 after_success:
-- if [ "${TRAVIS_PULL_REQUEST}" = "false" ] && [ "${TRAVIS_BRANCH}" = "cerdt" ]; then sbt ++$TRAVIS_SCALA_VERSION publish; fi
+- then sbt ++$TRAVIS_SCALA_VERSION publish
 scala:
   - 2.11.7
 jdk:
