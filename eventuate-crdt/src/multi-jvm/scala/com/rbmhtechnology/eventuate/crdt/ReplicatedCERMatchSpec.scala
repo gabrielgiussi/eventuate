@@ -23,8 +23,8 @@ import com.rbmhtechnology.eventuate._
 import com.typesafe.config.ConfigFactory
 
 class ReplicatedCERMatchSpecLeveldb extends ReplicatedCERMatchSpec with MultiNodeSupportLeveldb
-class ReplicatedCERMatchMultiJvmNode1 extends ReplicatedCERMatchSpecLeveldb
-class ReplicatedCERMatchMultiJvmNode2 extends ReplicatedCERMatchSpecLeveldb
+class ReplicatedCERMatchSpecLeveldbMultiJvmNode1 extends ReplicatedCERMatchSpecLeveldb
+class ReplicatedCERMatchSpecLeveldbMultiJvmNode2 extends ReplicatedCERMatchSpecLeveldb
 
 object ReplicatedCERMatchConfig extends MultiNodeReplicationConfig {
   val nodeA = role("nodeA")
@@ -57,7 +57,7 @@ abstract class ReplicatedCERMatchSpec extends MultiNodeSpec(ReplicatedCERMatchCo
         val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
         val service = new MatchService("A", endpoint.log) {
           override private[crdt] def onChange(crdt: CERMatch, operation: Any): Unit = probe.ref ! crdt.value
-          override private[crdt] def onApology(crdt: CERMatch, apology: Apology): Unit = probe.ref ! apology.undo.value
+          override private[crdt] def onApology(crdt: CERMatch, apology: Apology, processId: String): Unit = probe.ref ! (apology.undo.value, processId)
         }
 
         service.add("match1", "Gallardo")
@@ -78,15 +78,16 @@ abstract class ReplicatedCERMatchSpec extends MultiNodeSpec(ReplicatedCERMatchCo
         probe.expectMsg(Set("Gallardo", "Funes Mori", "Astrada"))
         // Each location persist his own Apology on state convergence. That's why I end up with 2 Apologies.
         // I can solve this issue asking for the
-        probe.expectMsg("Ortega")
-        probe.expectMsg("Ortega")
+        probe.expectMsg(("Ortega", "nodeB_ReplicatedCERMatchSpecLeveldb"))
+        probe.expectNoMsg()
+        //probe.expectMsg("Ortega")
       }
 
       runOn(nodeB) {
         val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
         val service = new MatchService("B", endpoint.log) {
           override private[crdt] def onChange(crdt: CERMatch, operation: Any): Unit = probe.ref ! crdt.value
-          override private[crdt] def onApology(crdt: CERMatch, apology: Apology): Unit = probe.ref ! apology.undo.value
+          override private[crdt] def onApology(crdt: CERMatch, apology: Apology, processId: String): Unit = probe.ref ! (apology.undo.value, processId)
         }
 
         service.value("match1")
@@ -103,8 +104,9 @@ abstract class ReplicatedCERMatchSpec extends MultiNodeSpec(ReplicatedCERMatchCo
         enterBarrier("repair")
 
         probe.expectMsg(Set("Gallardo", "Funes Mori", "Astrada"))
-        probe.expectMsg("Ortega")
-        probe.expectMsg("Ortega")
+        probe.expectMsg(("Ortega", "nodeB_ReplicatedCERMatchSpecLeveldb"))
+        //probe.expectMsg("Ortega")
+        probe.expectNoMsg()
       }
 
       enterBarrier("finish")

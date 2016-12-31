@@ -32,7 +32,11 @@ case class CERMatch(orSet: ORSet[String] = ORSet.apply[String]) extends CRDTForm
       (copy(updatedOrSet), None)
     else {
       val removed = updatedOrSet.versionedEntries.toVector.sorted(CERMatch.CERMatchOrdering).last
-      (copy(updatedOrSet.remove(updatedOrSet.prepareRemove(removed.value))), Some(removed))
+      println(s"Removed: ${removed} Player: ${player}")
+      if (!removed.value.equals(player))
+        (copy(updatedOrSet.remove(updatedOrSet.prepareRemove(removed.value))), Some(removed))
+      else
+        (copy(updatedOrSet.remove(updatedOrSet.prepareRemove(removed.value))), None)
     }
   }
 

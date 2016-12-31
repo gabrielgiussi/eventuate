@@ -27,11 +27,11 @@ trait MultiNodeReplicationEndpoint extends BeforeAndAfterAll { this: MultiNodeSp
     cn.substring(0, cn.lastIndexOf("MultiJvm"))
   }
 
-  def createEndpoint(endpointId: String, connections: Set[ReplicationConnection]): ReplicationEndpoint =
-    createEndpoint(endpointId, Set(logName), connections)
+  def createEndpoint(endpointId: String, connections: Set[ReplicationConnection])(implicit system: ActorSystem): ReplicationEndpoint =
+    createEndpoint(endpointId, Set(logName), connections)(system)
 
-  def createEndpoint(endpointId: String, logNames: Set[String], connections: Set[ReplicationConnection]): ReplicationEndpoint = {
-    val endpoint = new ReplicationEndpoint(endpointId, logNames, id => logProps(id), connections)
+  def createEndpoint(endpointId: String, logNames: Set[String], connections: Set[ReplicationConnection])(implicit system: ActorSystem): ReplicationEndpoint = {
+    val endpoint = new ReplicationEndpoint(endpointId, logNames, id => logProps(id), connections)(system)
     endpoint.activate()
     endpoint
   }

@@ -180,7 +180,7 @@ trait CRDTService[A, B] {
 
   private case class OnChange(crdt: A, operation: Any)
 
-  private case class OnApology(crdt: A, apology: Apology)
+  private case class OnApology(crdt: A, apology: Apology, processId: String)
 
   private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor with PersistOnEvent {
     override val id =
@@ -231,7 +231,7 @@ trait CRDTService[A, B] {
           case (c, None) => crdt = c
         }
         context.parent ! OnChange(crdt, operation)
-      case ap: Apology => context.parent ! OnApology(crdt, ap)
+      case ap: Apology => context.parent ! OnApology(crdt, ap, lastHandledEvent.processId)
     }
 
     override def onSnapshot = {
@@ -249,7 +249,7 @@ trait CRDTService[A, B] {
         crdtActor(cmd.id) forward cmd
       case n @ OnChange(crdt, operation) =>
         onChange(crdt, operation)
-      case a @ OnApology(crdt, apology) => onApology(crdt, apology)
+      case a @ OnApology(crdt, apology, processId) => onApology(crdt, apology, processId)
       case Terminated(crdt) =>
         crdts.find(pair => pair._2 == crdt).map(_._1).foreach { id =>
           crdts = crdts - id
@@ -269,5 +269,5 @@ trait CRDTService[A, B] {
   /** For testing purposes only */
   private[crdt] def onChange(crdt: A, operation: Any): Unit = ()
 
-  private[crdt] def onApology(crdt: A, apology: Apology): Unit = ()
+  private[crdt] def onApology(crdt: A, apology: Apology, processId: String): Unit = ()
 }
