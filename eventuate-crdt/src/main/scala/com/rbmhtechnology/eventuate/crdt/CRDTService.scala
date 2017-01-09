@@ -58,7 +58,7 @@ trait CRDTServiceOps[A, B] {
   /**
    * Update phase 1 ("atSource"). Prepares an operation for phase 2.
    */
-  def prepare(crdt: A, operation: Any): Option[Any] = Some(operation)
+  def prepare(crdt: A, operation: Any): Try[Option[Any]] = Success(Some(operation))
 
   /**
    * Update phase 2 ("downstream").
@@ -66,8 +66,6 @@ trait CRDTServiceOps[A, B] {
   def effect(crdt: A, operation: Any, event: DurableEvent): (A, Option[Apology])
 }
 
-// Tal vez Versioned no me alcance y necesite la op (porque por ejemplo no puedo saber si es un AddOp o un RemoveOp)
-// Pero las Op no las mantengo en el state, asi que dependeria de la logica del CRDT saber que Op se esta "deshaciendo" (undo)
 case class Apology(undo: Versioned[_], entry: Versioned[_]) extends CRDTFormat
 
 object CRDTService {
@@ -152,6 +150,10 @@ trait CRDTService[A, B] {
     w.ask(Save(id)).mapTo[SaveReply].map(_.metadata)(d)
   }
 
+  def awake(id: String): Unit = withManagerAndDispatcher { (w, d) =>
+    w.ask(Awake(id))
+  }
+
   /**
    * Updates the CRDT identified by `id` with given `operation`.
    * Returns the updated value of the CRDT.
@@ -178,6 +180,8 @@ trait CRDTService[A, B] {
   private case class Save(id: String) extends Identified
   private case class SaveReply(id: String, metadata: SnapshotMetadata) extends Identified
 
+  private case class Awake(id: String)
+
   private case class OnChange(crdt: A, operation: Any)
 
   private case class OnApology(crdt: A, apology: Apology, processId: String)
@@ -200,15 +204,17 @@ trait CRDTService[A, B] {
         sender() ! GetReply(crdtId, ops.value(crdt))
       case Update(`crdtId`, operation) =>
         ops.prepare(crdt, operation) match {
-          case None =>
-            sender() ! UpdateReply(crdtId, ops.value(crdt))
-          case Some(op) =>
+          case Success(Some(op)) =>
             persist(ValueUpdated(op)) {
               case Success(evt) =>
                 sender() ! UpdateReply(crdtId, ops.value(crdt))
               case Failure(err) =>
                 sender() ! Status.Failure(err)
             }
+          case Success(None) =>
+            sender() ! UpdateReply(crdtId, ops.value(crdt))
+          case Failure(err) =>
+            sender() ! Status.Failure(err)
         }
       case Save(`crdtId`) =>
         save(crdt) {
@@ -245,6 +251,7 @@ trait CRDTService[A, B] {
     var crdts: Map[String, ActorRef] = Map.empty
 
     def receive = {
+      case Awake(id) => crdtActor(id)
       case cmd: Identified =>
         crdtActor(cmd.id) forward cmd
       case n @ OnChange(crdt, operation) =>

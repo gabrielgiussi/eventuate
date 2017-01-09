@@ -151,11 +151,11 @@ abstract class ReplicatedCERMatchSpec3 extends MultiNodeSpec(ReplicatedCERMatchC
         val endpoint = createEndpoint(nodeA.name, Set(ReplicationConnection(nodeBAddress.host.get, 4993, nodeBAddress.system)))(firstSystemRestarted)
         serviceA = new TestMatchService(probe, "A-Restarted", endpoint.log)
         enterBarrier("bothUpAgain")
-        serviceA.value("match1")
+        serviceA.awake("match1")
         probe.expectMsg(Set("Gallardo"))
         probe.expectMsg(Set("Gallardo", "Funes Mori"))
         probe.expectMsg(Set("Gallardo", "Funes Mori", "Ortega"))
-        probe.expectMsg(Set("Gallardo", "Funes Mori", "Astrada")) // Este mensaje lo recibe por que pido serviceA
+        probe.expectMsg(Set("Gallardo", "Funes Mori", "Astrada"))
         probe.expectMsg(("Ortega", "nodeA_ReplicatedCERMatchSpec3Leveldb"))
         probe.expectNoMsg()
       }

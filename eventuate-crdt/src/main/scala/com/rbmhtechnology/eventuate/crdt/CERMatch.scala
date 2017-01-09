@@ -21,6 +21,7 @@ import com.rbmhtechnology.eventuate.{ DurableEvent, VectorTime, Versioned }
 
 import scala.collection.immutable.Set
 import scala.concurrent.Future
+import scala.util.{ Failure, Success, Try }
 
 case class CERMatch(orSet: ORSet[String] = ORSet.apply[String]) extends CRDTFormat {
 
@@ -28,14 +29,19 @@ case class CERMatch(orSet: ORSet[String] = ORSet.apply[String]) extends CRDTForm
 
   def add(player: String, timestamp: VectorTime): (CERMatch, Option[Versioned[String]]) = {
     val updatedOrSet = orSet.add(player, timestamp)
-    if (orSet.value.size < CERMatch.MATCH_SIZE)
+    if (orSet.value.size < CERMatch.MATCH_SIZE) {
+      println("Player agregado: " + player)
       (copy(updatedOrSet), None)
-    else {
-      val removed = updatedOrSet.versionedEntries.toVector.sorted(CERMatch.CERMatchOrdering).last
-      if (!removed.value.equals(player))
+    } else {
+      val removed = updatedOrSet.versionedEntries.filter(x => x.vectorTimestamp.conc(timestamp) || x.value.equals(player)).toVector.sorted(CERMatch.CERMatchOrdering).last
+      println("Removed: " + removed.value)
+      if (!removed.value.equals(player)) {
+        println("Apology: " + removed)
         (copy(updatedOrSet.remove(updatedOrSet.prepareRemove(removed.value))), Some(removed))
-      else
+      } else {
+        println("No me pienso disculpar " + player + " == " + removed.value)
         (copy(updatedOrSet.remove(updatedOrSet.prepareRemove(removed.value))), None)
+      }
     }
   }
 
@@ -67,15 +73,16 @@ object CERMatch {
 
     override def value(crdt: CERMatch): Set[String] = crdt.value
 
-    override def prepare(crdt: CERMatch, operation: Any): Option[Any] = operation match {
+    override def prepare(crdt: CERMatch, operation: Any): Try[Option[Any]] = operation match {
       //case op @ RemoveOp(entry, _) => ??
       case op @ AddOp(e) if (crdt.value.size < MATCH_SIZE) => orSetOps.prepare(crdt.orSet, operation)
-      case _ => None
+      case _ => Failure(new Exception("Match is already complete"))
     }
 
     override def effect(crdt: CERMatch, operation: Any, event: DurableEvent): (CERMatch, Option[Apology]) = operation match {
       case RemoveOp(_, timestamps) => (crdt.remove(timestamps), None)
       case AddOp(entry) =>
+        println("Recibido AddOp " + entry.toString)
         crdt.add(entry.asInstanceOf[String], event.vectorTimestamp) match {
           case (m, Some(removed)) => (m, Some(Apology(removed, Versioned(entry, event.vectorTimestamp))))
           case (m, None)          => (m, None)
