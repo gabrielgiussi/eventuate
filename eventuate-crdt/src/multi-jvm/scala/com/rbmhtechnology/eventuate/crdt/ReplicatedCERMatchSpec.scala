@@ -23,8 +23,8 @@ import com.rbmhtechnology.eventuate._
 import com.typesafe.config.ConfigFactory
 
 class ReplicatedCERMatchSpecLeveldb extends ReplicatedCERMatchSpec with MultiNodeSupportLeveldb
-class ReplicatedCERMatchMultiJvmNode1 extends ReplicatedCERMatchSpecLeveldb
-class ReplicatedCERMatchMultiJvmNode2 extends ReplicatedCERMatchSpecLeveldb
+class ReplicatedCERMatchSpecLeveldbMultiJvmNode1 extends ReplicatedCERMatchSpecLeveldb
+class ReplicatedCERMatchSpecLeveldbMultiJvmNode2 extends ReplicatedCERMatchSpecLeveldb
 
 object ReplicatedCERMatchConfig extends MultiNodeReplicationConfig {
   val nodeA = role("nodeA")
@@ -57,6 +57,7 @@ abstract class ReplicatedCERMatchSpec extends MultiNodeSpec(ReplicatedCERMatchCo
         val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
         val service = new MatchService("A", endpoint.log) {
           override private[crdt] def onChange(crdt: CERMatch, operation: Any): Unit = probe.ref ! crdt.value
+          override private[crdt] def onApology(crdt: CERMatch, apology: Apology, processId: String): Unit = probe.ref ! (apology.undo.value, processId)
         }
 
         service.add("match1", "Gallardo")
@@ -69,18 +70,24 @@ abstract class ReplicatedCERMatchSpec extends MultiNodeSpec(ReplicatedCERMatchCo
 
         // this is concurrent to service.remove("x", 1) on node B
         service.add("match1", "Astrada")
-        probe.expectMsg(Set("Gallardo", "Funes Mori","Astrada"))
+        probe.expectMsg(Set("Gallardo", "Funes Mori", "Astrada"))
 
         enterBarrier("repair")
         testConductor.passThrough(nodeA, nodeB, Direction.Both).await
 
-        probe.expectMsg(Set("Gallardo", "Ortega","Astrada"))
+        probe.expectMsg(Set("Gallardo", "Funes Mori", "Astrada"))
+        // Each location persist his own Apology on state convergence. That's why I end up with 2 Apologies.
+        // I can solve this issue asking for the
+        probe.expectMsg(("Ortega", "nodeB_ReplicatedCERMatchSpecLeveldb"))
+        probe.expectNoMsg()
+        //probe.expectMsg("Ortega")
       }
 
       runOn(nodeB) {
         val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
         val service = new MatchService("B", endpoint.log) {
           override private[crdt] def onChange(crdt: CERMatch, operation: Any): Unit = probe.ref ! crdt.value
+          override private[crdt] def onApology(crdt: CERMatch, apology: Apology, processId: String): Unit = probe.ref ! (apology.undo.value, processId)
         }
 
         service.value("match1")
@@ -91,12 +98,15 @@ abstract class ReplicatedCERMatchSpec extends MultiNodeSpec(ReplicatedCERMatchCo
         enterBarrier("broken")
 
         // this is concurrent to service.add("x", 1) on node A
-        service.remove("match1", "Ortega")
-        probe.expectMsg(Set("Gallardo", "Funes Mori","Ortega"))
+        service.add("match1", "Ortega")
+        probe.expectMsg(Set("Gallardo", "Funes Mori", "Ortega"))
 
         enterBarrier("repair")
 
-        probe.expectMsg(Set("Gallardo", "Ortega","Astrada"))
+        probe.expectMsg(Set("Gallardo", "Funes Mori", "Astrada"))
+        probe.expectMsg(("Ortega", "nodeB_ReplicatedCERMatchSpecLeveldb"))
+        //probe.expectMsg("Ortega")
+        probe.expectNoMsg()
       }
 
       enterBarrier("finish")
