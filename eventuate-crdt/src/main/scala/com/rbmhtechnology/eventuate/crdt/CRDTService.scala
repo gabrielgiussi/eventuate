@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit
 import akka.actor._
 import akka.pattern.ask
 import akka.util.Timeout
-
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDTPassivator.NewCRDT
 import com.typesafe.config.Config
 
 import scala.concurrent.{ ExecutionContext, Future }
@@ -230,14 +230,17 @@ trait CRDTService[A, B] {
 
   private class CRDTManager extends Actor {
     var crdts: Map[String, ActorRef] = Map.empty
+    val passivator = context.actorOf(Props[CRDTPassivator], "crdt-passivator")
 
     def receive = {
+      //
       case cmd: Identified =>
         crdtActor(cmd.id) forward cmd
       case n @ OnChange(crdt, operation) =>
         onChange(crdt, operation)
       case Terminated(crdt) =>
         crdts.find(pair => pair._2 == crdt).map(_._1).foreach { id =>
+          onStop(id)
           crdts = crdts - id
         }
     }
@@ -248,10 +251,18 @@ trait CRDTService[A, B] {
       case None =>
         val crdt = context.watch(context.actorOf(Props(new CRDTActor(id, log))))
         crdts = crdts.updated(id, crdt)
+        passivator ! NewCRDT(id, crdt)
+        onCreation(id, crdt)
         crdt
     }
   }
 
   /** For testing purposes only */
   private[crdt] def onChange(crdt: A, operation: Any): Unit = ()
+
+  /** For testing purposes only */
+  private[crdt] def onCreation(id: String, crdt: ActorRef): Unit = ()
+
+  /** For testing purposes only */
+  private[crdt] def onStop(id: String): Unit = ()
 }
