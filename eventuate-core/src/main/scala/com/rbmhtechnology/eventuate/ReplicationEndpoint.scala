@@ -19,16 +19,18 @@ package com.rbmhtechnology.eventuate
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.function.{ Function => JFunction }
+import java.util.logging.{ Level, Logger }
 import java.util.{ Set => JSet }
 
 import akka.actor._
-import akka.event.Logging
+import akka.event.{ Logging, LoggingAdapter }
 import akka.pattern.{ ask, pipe }
 import akka.util.Timeout
 import com.rbmhtechnology.eventuate.EndpointFilters.NoFilters
 import com.rbmhtechnology.eventuate.EventsourcingProtocol.{ Delete, DeleteFailure, DeleteSuccess }
 import com.rbmhtechnology.eventuate.ReplicationFilter.NoFilter
 import com.rbmhtechnology.eventuate.ReplicationProtocol.{ ReplicationEndpointInfo, _ }
+import com.rbmhtechnology.eventuate.StabilityChecker.MostRecentlyViewedTimestamp
 import com.typesafe.config.Config
 
 import scala.collection.JavaConverters._
@@ -66,6 +68,8 @@ class ReplicationSettings(config: Config) {
 }
 
 object ReplicationEndpoint {
+
+  val logger = Logger.getLogger(getClass.getCanonicalName)
   /**
    * Default log name.
    */
@@ -161,7 +165,9 @@ object ReplicationEndpoint {
       if (config.hasPath("eventuate.endpoint.application.version")) ApplicationVersion(config.getString("eventuate.endpoint.application.version"))
       else DefaultApplicationVersion
 
-    new ReplicationEndpoint(endpointId, Set(ReplicationEndpoint.DefaultLogName), logFactory, connections, applicationName = applicationName, applicationVersion = applicationVersion)(system)
+    val neighbors = config.getStringList("eventuate.endpoint.neighbors").asScala.toList
+
+    new ReplicationEndpoint(endpointId, Set(ReplicationEndpoint.DefaultLogName), logFactory, connections, applicationName = applicationName, applicationVersion = applicationVersion, neighbors = neighbors)(system)
   }
 
   /**
@@ -271,9 +277,11 @@ class ReplicationEndpoint(
   val connections: Set[ReplicationConnection],
   val endpointFilters: EndpointFilters = NoFilters,
   val applicationName: String = ReplicationEndpoint.DefaultApplicationName,
-  val applicationVersion: ApplicationVersion = ReplicationEndpoint.DefaultApplicationVersion)(implicit val system: ActorSystem) {
+  val applicationVersion: ApplicationVersion = ReplicationEndpoint.DefaultApplicationVersion,
+  val neighbors: List[String] = Nil)(implicit val system: ActorSystem) {
 
   import Acceptor._
+  import ReplicationEndpoint._
 
   private val active: AtomicBoolean =
     new AtomicBoolean(false)
@@ -419,7 +427,10 @@ class ReplicationEndpoint(
    * Activates this endpoint by starting event replication from remote endpoints to this endpoint.
    */
   def activate(): Unit = if (active.compareAndSet(false, true)) {
+    logger.info(s"Activating Endpoint $id. Notifying the local Acceptor to start processing replication info: (GetReplicationEndpointInfo,ReplicationRead)")
     acceptor ! Process
+    logger.info(s"Activating one SourceConnector per ReplicationConnection $connections")
+    // TODO que es replicationLinks y porque siempre le pasa None???
     connectors.foreach(_.activate(replicationLinks = None))
   } else throw new IllegalStateException("Recovery running or endpoint already activated")
 
@@ -545,6 +556,8 @@ private case class ReplicationLink(
   target: ReplicationTarget)
 
 private class SourceConnector(val targetEndpoint: ReplicationEndpoint, val connection: ReplicationConnection) {
+  import ReplicationEndpoint._
+
   def links(sourceInfo: ReplicationEndpointInfo): Set[ReplicationLink] =
     targetEndpoint.commonLogNames(sourceInfo).map { logName =>
       val sourceLogId = sourceInfo.logId(logName)
@@ -552,8 +565,11 @@ private class SourceConnector(val targetEndpoint: ReplicationEndpoint, val conne
       ReplicationLink(source, targetEndpoint.target(logName))
     }
 
-  def activate(replicationLinks: Option[Set[ReplicationLink]]): Unit =
-    targetEndpoint.system.actorOf(Props(new Connector(this, replicationLinks.map(_.filter(fromThisSource)))))
+  def activate(replicationLinks: Option[Set[ReplicationLink]]): Unit = {
+    val filteredLinks = replicationLinks.map(_.filter(fromThisSource))
+    logger.info(s"Activating SourceConnector ${targetEndpoint.id} -> ${connection.host}:${connection.port}. Creating a Connector with ReplicationLinks $filteredLinks")
+    targetEndpoint.system.actorOf(Props(new Connector(this, filteredLinks)))
+  }
 
   private def fromThisSource(replicationLink: ReplicationLink): Boolean =
     replicationLink.source.acceptor == remoteAcceptor
@@ -568,8 +584,9 @@ private class SourceConnector(val targetEndpoint: ReplicationEndpoint, val conne
       case sys: ExtendedActorSystem => sys.provider.getDefaultAddress.protocol
       case sys                      => "akka.tcp"
     }
-
-    targetEndpoint.system.actorSelection(s"${protocol}://${name}@${host}:${port}/user/${actor}")
+    val actorPath = s"${protocol}://${name}@${host}:${port}/user/${actor}"
+    logger.info(s"Obtaining remote Acceptor via ActorSelection. $actorPath")
+    targetEndpoint.system.actorSelection(actorPath)
   }
 }
 
@@ -582,6 +599,7 @@ private class SourceConnector(val targetEndpoint: ReplicationEndpoint, val conne
  */
 private class Connector(sourceConnector: SourceConnector, replicationLinks: Option[Set[ReplicationLink]]) extends Actor {
   import context.dispatcher
+  import ReplicationEndpoint._ // TODO lo puedo reemplzar por el LoggingAdapter porque es un actor.
 
   private val acceptor = sourceConnector.remoteAcceptor
   private var acceptorRequestSchedule: Option[Cancellable] = None
@@ -590,6 +608,8 @@ private class Connector(sourceConnector: SourceConnector, replicationLinks: Opti
 
   def receive = {
     case GetReplicationEndpointInfoSuccess(info) if !connected =>
+      logger.info(s"Relation EndpointID(${info.endpointId} <---> Address(${sourceConnector.connection.host}:${sourceConnector.connection.port}))")
+      logger.info(s"Received GetReplicationEndpointInfoSuccess($info). Creating one Replicator per ${sourceConnector.links(info)}")
       sourceConnector.links(info).foreach(createReplicator)
       connected = true
       acceptorRequestSchedule.foreach(_.cancel())
@@ -624,14 +644,18 @@ private class Replicator(target: ReplicationTarget, source: ReplicationSource) e
   import FailureDetector._
   import context.dispatcher
   import target.endpoint.settings
+  import ReplicationEndpoint._
 
   val scheduler = context.system.scheduler
   val detector = context.actorOf(Props(new FailureDetector(source.endpointId, source.logName, settings.failureDetectionLimit)))
+  val stability = context.actorOf(Props(new StabilityChecker(target.endpoint.neighbors.toSet)))
+  target.log ! stability // FIXME
 
   var readSchedule: Option[Cancellable] = None
 
   val fetching: Receive = {
     case GetReplicationProgressSuccess(_, storedReplicationProgress, currentTargetVersionVector) =>
+      log.info(s"Received GetReplicationProgressSuccess(storedReplicationProgress = $storedReplicationProgress, currentTargetVersionVector = $currentTargetVersionVector)")
       context.become(reading)
       read(storedReplicationProgress, currentTargetVersionVector)
     case GetReplicationProgressFailure(cause) =>
@@ -647,9 +671,13 @@ private class Replicator(target: ReplicationTarget, source: ReplicationSource) e
   }
 
   val reading: Receive = {
-    case ReplicationReadSuccess(events, fromSequenceNr, replicationProgress, _, currentSourceVersionVector) =>
+    case r @ ReplicationReadSuccess(events, fromSequenceNr, replicationProgress, _, currentSourceVersionVector, _) =>
       detector ! AvailabilityDetected
+      // podria sacar el stabilityChecker de Replicator y ponerlo directamente en EventLog? (es decir q solo le mande Eventlog)
+      // Un RRS que recibe un Replicator se termina traduciendo a un ReplicationWrite con Metadata que contiene el cTVV del eventlog remoto
+      stability ! MostRecentlyViewedTimestamp(source.endpointId, currentSourceVersionVector)
       context.become(writing)
+      if (r.events.nonEmpty) logger.info(s"Received $r")
       write(events, replicationProgress, currentSourceVersionVector, replicationProgress >= fromSequenceNr)
     case ReplicationReadFailure(cause, _) =>
       detector ! FailureDetected(cause)
@@ -693,6 +721,7 @@ private class Replicator(target: ReplicationTarget, source: ReplicationSource) e
   private def fetch(): Unit = {
     implicit val timeout = Timeout(settings.readTimeout)
 
+    logger.info(s"Sending GetReplicationProgress(${source.logId}) to target(local) EventLog")
     target.log ? GetReplicationProgress(source.logId) recover {
       case t => GetReplicationProgressFailure(t)
     } pipeTo self
@@ -702,21 +731,25 @@ private class Replicator(target: ReplicationTarget, source: ReplicationSource) e
     implicit val timeout = Timeout(settings.remoteReadTimeout)
     val replicationRead = ReplicationRead(storedReplicationProgress + 1, settings.writeBatchSize, settings.remoteScanLimit, NoFilter, target.logId, self, currentTargetVersionVector)
 
-    (source.acceptor ? ReplicationReadEnvelope(replicationRead, source.logName, target.endpoint.applicationName, target.endpoint.applicationVersion)) recover {
+    val envelope = ReplicationReadEnvelope(replicationRead, source.logName, target.endpoint.applicationName, target.endpoint.applicationVersion)
+    log.info(s"Sending $envelope to source(remote) Acceptor")
+    (source.acceptor ? envelope) recover {
       case t => ReplicationReadFailure(ReplicationReadTimeoutException(settings.remoteReadTimeout), target.logId)
     } pipeTo self
   }
 
   private def write(events: Seq[DurableEvent], replicationProgress: Long, currentSourceVersionVector: VectorTime, continueReplication: Boolean): Unit = {
     implicit val timeout = Timeout(settings.writeTimeout)
-
+    logger.info("Sending ReplicationWrite to target(local) EventLog")
     target.log ? ReplicationWrite(events, Map(source.logId -> ReplicationMetadata(replicationProgress, currentSourceVersionVector)), continueReplication) recover {
       case t => ReplicationWriteFailure(t)
     } pipeTo self
   }
 
-  override def preStart(): Unit =
+  override def preStart(): Unit = {
+    logger.info("Fetching ReplicationProgress for the first time")
     fetch()
+  }
 
   override def postStop(): Unit =
     readSchedule.foreach(_.cancel())

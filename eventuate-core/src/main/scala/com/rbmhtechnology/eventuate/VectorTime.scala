@@ -79,6 +79,9 @@ case class VectorTime(value: Map[String, Long] = Map.empty) {
   def <->(that: VectorTime): Boolean =
     conc(that)
 
+  def ||(that: VectorTime): Boolean =
+    conc(that)
+
   /**
    * Returns `true` if this vector time is less than or equal to `that`.
    */

@@ -32,14 +32,17 @@ trait EventsourcedVersion extends EventsourcedView {
   /**
    * Updates the current version from the given `event`.
    */
-  private def updateVersion(event: DurableEvent): Unit =
+  private def updateVersion(event: DurableEvent): Unit = {
+    logger.info(s"Updating ${_currentVersion} to version ${_currentVersion.merge(event.vectorTimestamp)} with ${event.vectorTimestamp}")
     _currentVersion = _currentVersion.merge(event.vectorTimestamp)
+  }
 
   /**
    * Internal API.
    */
   private[eventuate] def durableEvent(payload: Any, customDestinationAggregateIds: Set[String],
-    deliveryId: Option[String] = None, persistOnEventSequenceNr: Option[Long] = None, persistOnEventId: Option[EventId] = None): DurableEvent =
+    deliveryId: Option[String] = None, persistOnEventSequenceNr: Option[Long] = None, persistOnEventId: Option[EventId] = None): DurableEvent = {
+    logger.info(s"Persisting Event $currentVersion")
     DurableEvent(
       payload = payload,
       emitterId = id,
@@ -49,6 +52,7 @@ trait EventsourcedVersion extends EventsourcedView {
       deliveryId = deliveryId,
       persistOnEventSequenceNr = persistOnEventSequenceNr,
       persistOnEventId = persistOnEventId)
+  }
 
   /**
    * Internal API.

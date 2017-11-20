@@ -17,12 +17,14 @@
 package com.rbmhtechnology.eventuate
 
 import java.util.concurrent.TimeUnit
+import java.util.logging.Logger
 
 import akka.actor._
 import akka.pattern.{ ask, pipe }
 import akka.util.Timeout
 import com.rbmhtechnology.eventuate.Acceptor.Recover
 import com.rbmhtechnology.eventuate.EventsourcingProtocol._
+import com.rbmhtechnology.eventuate.Chusma.Forward
 import com.rbmhtechnology.eventuate.ReplicationFilter.NoFilter
 import com.rbmhtechnology.eventuate.ReplicationProtocol._
 import com.rbmhtechnology.eventuate.log.EventLogClock
@@ -84,14 +86,18 @@ private class Recovery(endpoint: ReplicationEndpoint) {
   import settings._
   import endpoint.system.dispatcher
 
+  val logger = Logger.getLogger(getClass.getCanonicalName)
+
   private implicit val timeout = Timeout(remoteOperationTimeout)
   private implicit val scheduler = endpoint.system.scheduler
 
   /**
    * Read [[ReplicationEndpointInfo]] from local [[ReplicationEndpoint]]
    */
-  def readEndpointInfo: Future[ReplicationEndpointInfo] =
+  def readEndpointInfo: Future[ReplicationEndpointInfo] = {
+    logger.info(s"Reading")
     readLogSequenceNrs.map(ReplicationEndpointInfo(endpoint.id, _))
+  }
 
   private def readLogSequenceNrs: Future[Map[String, Long]] =
     readEventLogClocks.map(_.mapValues(_.sequenceNr).view.force)
@@ -218,11 +224,13 @@ private class Recovery(endpoint: ReplicationEndpoint) {
  *  - `initializing` -> `recovering` -> `processing` (when calling `endpoint.recover()`)
  *  - `initializing` -> `processing`                 (when calling `endpoint.activate()`)
  */
-private class Acceptor(endpoint: ReplicationEndpoint) extends Actor {
+private class Acceptor(endpoint: ReplicationEndpoint) extends Actor with ActorLogging {
   import Acceptor._
   import context.dispatcher
 
   private val recovery = new Recovery(endpoint)
+  private val neighbors = endpoint.connections.map { case ReplicationConnection(host, port, _) => s"neighbor[$host:$port]" }
+  private val prueba = context.actorOf(Chusma.props(neighbors))
 
   def initializing: Receive = recovering orElse {
     case Process =>
@@ -250,8 +258,12 @@ private class Acceptor(endpoint: ReplicationEndpoint) extends Actor {
     case re: ReplicationReadEnvelope if re.incompatibleWith(endpoint.applicationName, endpoint.applicationVersion) =>
       sender ! ReplicationReadFailure(IncompatibleApplicationVersionException(endpoint.id, endpoint.applicationVersion, re.targetApplicationVersion), re.payload.targetLogId)
     case ReplicationReadEnvelope(r, logName, _, _) =>
+      // actualizar la lista de vecinos de los cuales recibi un cTVV
       val r2 = r.copy(filter = endpoint.endpointFilters.filterFor(r.targetLogId, logName) and r.filter)
-      endpoint.logs(logName) forward r2
+      log.info(s"Received ReplicationReadEnvelope($r,$logName). Forwarding $r2 to EventLog")
+      //endpoint.logs(logName) forward r2
+      val remoteEventLog = endpoint.logs(logName)
+      prueba forward Forward(r2, remoteEventLog)
     case _: ReplicationWriteSuccess =>
   }
 

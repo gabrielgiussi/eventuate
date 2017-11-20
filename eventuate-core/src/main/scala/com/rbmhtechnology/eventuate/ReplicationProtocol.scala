@@ -176,12 +176,16 @@ object ReplicationProtocol {
    * Instructs a source log to read up to `max` events starting at `fromSequenceNr` and applying
    * the given replication `filter`.
    */
-  case class ReplicationRead(fromSequenceNr: Long, max: Int, scanLimit: Int, filter: ReplicationFilter, targetLogId: String, replicator: ActorRef, currentTargetVersionVector: VectorTime) extends Format
+  case class ReplicationRead(fromSequenceNr: Long, max: Int, scanLimit: Int, filter: ReplicationFilter, targetLogId: String, replicator: ActorRef, currentTargetVersionVector: VectorTime) extends Format {
+    override def toString = s"ReplicationRead(fromSequenceNr=$fromSequenceNr,max=$max,scanLimit=$scanLimit,targetLogId=$targetLogId,currentTargetVersionVector=$currentTargetVersionVector)"
+  }
 
   /**
    * Success reply after a [[ReplicationRead]].
    */
-  case class ReplicationReadSuccess(events: Seq[DurableEvent], fromSequenceNr: Long, replicationProgress: Long, targetLogId: String, currentSourceVersionVector: VectorTime) extends DurableEventBatch with Format
+  case class ReplicationReadSuccess(events: Seq[DurableEvent], fromSequenceNr: Long, replicationProgress: Long, targetLogId: String, currentSourceVersionVector: VectorTime, neighborsViewed: Boolean = false) extends DurableEventBatch with Format {
+    override def toString: String = s"ReplicationReadSuccess(events=$events,fromSequenceNr=$fromSequenceNr,replicationProgress=$replicationProgress,targetLogId=$targetLogId,currentSourceVersionVector=$currentSourceVersionVector)"
+  }
 
   /**
    * Failure reply after a [[ReplicationRead]].

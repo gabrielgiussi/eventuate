@@ -16,13 +16,15 @@
 
 package com.rbmhtechnology.eventuate.log
 
+import java.util.logging.Logger
+
 import akka.actor._
 import akka.dispatch.MessageDispatcher
 import akka.event.{ Logging, LoggingAdapter }
-
-import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.EventsourcingProtocol._
 import com.rbmhtechnology.eventuate.ReplicationProtocol._
+import com.rbmhtechnology.eventuate.StabilityChecker.WritedEvents
+import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.snapshot.filesystem._
 
 import scala.collection.immutable.Seq
@@ -82,6 +84,9 @@ trait EventLogState {
  * written to that event log.
  */
 case class EventLogClock(sequenceNr: Long = 0L, versionVector: VectorTime = VectorTime.Zero) {
+
+  val logger = Logger.getLogger(getClass.getCanonicalName)
+
   /**
    * Advances `sequenceNr` by given `delta`.
    */
@@ -92,8 +97,11 @@ case class EventLogClock(sequenceNr: Long = 0L, versionVector: VectorTime = Vect
    * Sets `sequenceNr` to the event's local sequence number and merges `versionVector` with
    * the event's vector timestamp.
    */
-  def update(event: DurableEvent): EventLogClock =
-    copy(sequenceNr = event.localSequenceNr, versionVector = versionVector.merge(event.vectorTimestamp))
+  def update(event: DurableEvent): EventLogClock = {
+    val newClock = copy(sequenceNr = event.localSequenceNr, versionVector = versionVector.merge(event.vectorTimestamp))
+    logger.info(s"Updating EventClock with Event(payload=${event.payload},vectorTimestamp=${event.vectorTimestamp}). Old: $this New $newClock")
+    newClock
+  }
 
   /**
    * Sets `sequenceNr` to max of `sequenceNr` and `processId`s entry in `versionVector`.
@@ -245,8 +253,8 @@ trait EventLogSPI[A] { this: Actor =>
  * @tparam A Event log state type (a subtype of [[EventLogState]]).
  */
 abstract class EventLog[A <: EventLogState](id: String) extends Actor with EventLogSPI[A] with Stash {
-  import NotificationChannel._
   import EventLog._
+  import NotificationChannel._
 
   private case class RecoverStateSuccess(state: A)
   private case class RecoverStateFailure(cause: Throwable)
@@ -332,6 +340,8 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
   private val snapshotStore: FilesystemSnapshotStore =
     new FilesystemSnapshotStore(new FilesystemSnapshotStoreSettings(context.system), id)
 
+  private var stabilityChecker: Option[ActorRef] = None
+
   /**
    * This event log's logging adapter.
    */
@@ -403,12 +413,15 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       import services.readDispatcher
       val sdr = sender()
       channel.foreach(_ ! r)
-      remoteReplicationProgress += targetLogId -> (0L max from - 1)
+      val newRepProgress = targetLogId -> (0L max from - 1)
+      logger.info(s"Received $r. Updating remoteReplicationProgress: $remoteReplicationProgress ++ $newRepProgress")
+      logger.info(s"Reading from Custom EventLog implementation: fromSequenceNr=$from, toSequenceNr=${clock.sequenceNr}, max=$max, scanLimit=$scanLimit, currentTargetVersionVector=$currentTargetVersionVector")
+      remoteReplicationProgress += newRepProgress
       replicationRead(from, clock.sequenceNr, max, scanLimit, evt => evt.replicable(currentTargetVersionVector, filter)) onComplete {
         case Success(r) => self.tell(ReplicationReadSuccess(r.events, from, r.to, targetLogId, null), sdr)
         case Failure(e) => self.tell(ReplicationReadFailure(ReplicationReadSourceException(e.getMessage), targetLogId), sdr)
       }
-    case r @ ReplicationReadSuccess(events, _, _, targetLogId, _) =>
+    case r @ ReplicationReadSuccess(events, _, _, targetLogId, _, _) =>
       // Post-exclude events using a possibly updated version vector received from the
       // target. This is an optimization to save network bandwidth. If omitted, events
       // are still excluded at target based on the current local version vector at the
@@ -416,6 +429,10 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       val currentTargetVersionVector = replicaVersionVectors(targetLogId)
       val updated = events.filterNot(_.before(currentTargetVersionVector))
       val reply = r.copy(updated, currentSourceVersionVector = clock.versionVector)
+      if (reply.events.nonEmpty) {
+        logger.info(s"Received ReplicationReadSuccess (autosended) with events = $events, currentSourceVersionVector = ${r.currentSourceVersionVector}, currentTargetVersionVector = $currentTargetVersionVector")
+        logger.info(s"Sending $reply to remote Replicator")
+      }
       sender() ! reply
       channel.foreach(_ ! reply)
       logFilterStatistics("source", events, updated)
@@ -499,6 +516,7 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       }
     case Terminated(subscriber) =>
       registry = registry.unregisterSubscriber(subscriber)
+    case a: ActorRef => stabilityChecker = Some(a)
   }
 
   override def receive =
@@ -512,6 +530,7 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
   private def processWrites(writes: Seq[Write]): Unit = {
     writeBatches(writes, prepareEvents(_, _, currentSystemTime)) match {
       case Success((updatedWrites, updatedEvents, clock2)) =>
+        logger.info(s"Write success. New clock: $clock2")
         clock = clock2
         updatedWrites.foreach { w =>
           w.replyTo.tell(WriteSuccess(w.events, w.correlationId, w.instanceId), w.initiator)
@@ -524,14 +543,23 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
   }
 
   private def processReplicationWrites(writes: Seq[ReplicationWrite]): Unit = {
+    if (writes.flatMap(_.events).nonEmpty) logger.info(s"Processing Replication Writes $writes")
+    val oldReplicaVV = replicaVersionVectors
     for { w <- writes; (id, m) <- w.metadata } replicaVersionVectors = replicaVersionVectors.updated(id, m.currentVersionVector)
+    if (!oldReplicaVV.equals(replicaVersionVectors)) logger.info(s"Old replicaVersionVectors $oldReplicaVV. Updated replicaVersionVectors $replicaVersionVectors")
     writeBatches(writes, prepareReplicatedEvents(_, _, currentSystemTime)) match {
       case Success((updatedWrites, updatedEvents, clock2)) =>
         clock = clock2
+        // A esta altura (o adento del foreach?) yo ya tengo mi nuevo cTVV. OJO. Tener en cuenta que esto no se ejecuta
+        // en el replay (cuando se reprocesan eventos persistidos), pero el cTVV se arma igual, lo importante de este
+        // punto es que sirve como dispador de check stability (en el replay no tiene sentido dispararlo)
+        // Y creo que los recently viewed timestamps los puedo actualizar en dos lugares
+        // - 5
+        stabilityChecker.foreach(_ ! WritedEvents(clock2.versionVector, updatedEvents.map(_.vectorTimestamp)))
         updatedWrites.foreach { w =>
           val ws = ReplicationWriteSuccess(w.events, w.metadata.mapValues(_.withVersionVector(clock2.versionVector)), w.continueReplication)
-          registry.notifySubscribers(w.events)
-          channel.foreach(_ ! w)
+          registry.notifySubscribers(w.events) // puedo sumar al stabilitychecker aca en lugar de enviarle explicito?
+          channel.foreach(_ ! w) // o aca... (esto esta prendido solo por conf, eventuate.log.replication.update-notifications, y le manda a Replicator)
           implicit val dispatcher = context.system.dispatchers.defaultGlobalDispatcher
           writeReplicationProgresses(w.replicationProgresses) onComplete {
             case Success(_) =>
@@ -571,15 +599,18 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
   private def prepareEvents(events: Seq[DurableEvent], clock: EventLogClock, systemTimestamp: Long): (Seq[DurableEvent], EventLogClock) = {
     var snr = clock.sequenceNr
     var lvv = clock.versionVector
-
+    logger.info(s"Preparing events=$events. snr=$snr, lvv=$lvv")
     val updated = events.map { e =>
+
       snr += 1L
 
       val e2 = e.prepare(id, snr, systemTimestamp)
       lvv = lvv.merge(e2.vectorTimestamp)
       e2
     }
-    (updated, clock.copy(sequenceNr = snr, versionVector = lvv))
+    val r = (updated, clock.copy(sequenceNr = snr, versionVector = lvv))
+    logger.info(s"Prepared events $r")
+    r
   }
 
   private def prepareReplicatedEvents(events: Seq[DurableEvent], clock: EventLogClock, systemTimestamp: Long): (Seq[DurableEvent], EventLogClock) = {
