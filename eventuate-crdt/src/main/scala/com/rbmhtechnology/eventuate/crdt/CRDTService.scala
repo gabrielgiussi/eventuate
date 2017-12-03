@@ -21,11 +21,12 @@ import java.util.concurrent.TimeUnit
 import akka.actor._
 import akka.pattern.ask
 import akka.util.Timeout
-
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.log.EventLog.NewCRDT
+import com.rbmhtechnology.eventuate.log.StabilityChecker.SubscribeTCStable
 import com.typesafe.config.Config
 
-import scala.concurrent.{ ExecutionContext, Future }
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import scala.language.higherKinds
 import scala.util._
@@ -186,6 +187,9 @@ trait CRDTService[A, B] {
     var crdt: A =
       ops.zero
 
+    // TODO where do this?
+    eventLog ! SubscribeTCStable(self)
+
     override def stateSync: Boolean =
       ops.precondition
 
@@ -226,6 +230,7 @@ trait CRDTService[A, B] {
         crdt = snapshot.asInstanceOf[A]
         context.parent ! OnChange(crdt, null)
     }
+
   }
 
   private class CRDTManager extends Actor {
