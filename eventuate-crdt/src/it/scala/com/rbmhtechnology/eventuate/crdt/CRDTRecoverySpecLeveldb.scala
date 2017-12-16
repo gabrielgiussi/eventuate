@@ -18,17 +18,19 @@ package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
 import akka.testkit._
-
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.utilities._
-
 import org.scalatest._
 
 class CRDTRecoverySpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecLike with Matchers with SingleLocationSpecLeveldb {
+  import ORSet._
+
   var probe: TestProbe = _
 
   def service(serviceId: String) = new ORSetService[Int](serviceId, log) {
-    override def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value
+    //override def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value TODO
+    override def onChange(crdt: CRDTSPI[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
   }
 
   override def beforeEach(): Unit = {
@@ -54,7 +56,8 @@ class CRDTRecoverySpecLeveldb extends TestKit(ActorSystem("test")) with WordSpec
     "recover CRDT instances from snapshots" in {
       val service1 = service("a")
       service1.add("x", 1)
-      service1.add("x", 2)
+      // Await before save to not depend on actor's stateSync flag
+      service1.add("x", 2).await
       service1.save("x").await
       service1.add("x", 3)
       probe.expectMsg(Set(1))

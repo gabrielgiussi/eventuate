@@ -18,6 +18,7 @@ package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation, PruneState, UpdateState }
 
 import scala.concurrent.Future
 import scala.collection.immutable.Set
@@ -31,62 +32,53 @@ import scala.util.{ Success, Try }
  *
  * @see [[http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf A comprehensive study of Convergent and Commutative Replicated Data Types]], specification 15
  */
-case class ORSet[A](versionedEntries: Set[Versioned[A]] = Set.empty[Versioned[A]]) extends CRDTFormat {
+case class ORSet[A](polog: POLog = POLog(), state: Set[A] = Set.empty[A]) extends CRDT[Set[A]] with CRDTHelper[Set[A], ORSet[A]] {
   /**
    * Returns all entries, masking duplicates of different version.
    */
-  def value: Set[A] =
-    versionedEntries.map(_.value)
 
-  /**
-   * Adds a [[Versioned]] entry from `entry`, identified by `timestamp`, and returns an updated `ORSet`.
-   */
-  def add(entry: A, timestamp: VectorTime): ORSet[A] =
-    copy(versionedEntries = versionedEntries + Versioned(entry, timestamp))
+  override protected[crdt] val obs: Obsolete = (op1, op2) => {
+    ((op1.vectorTimestamp, op1.value), (op2.vectorTimestamp, op2.value)) match {
+      case ((t1, AddOp(v1)), (t2, AddOp(v2)))       => (t1 < t2) && (v1 equals v2)
+      case ((t1, AddOp(v1)), (t2, RemoveOp(v2, _))) => (t1 < t2) && (v1 equals v2)
+      case ((_, RemoveOp(_, _)), _)                 => true
+    }
+  }
 
-  /**
-   * Collects all timestamps of given `entry`.
-   */
-  def prepareRemove(entry: A): Set[VectorTime] =
-    versionedEntries.collect { case Versioned(`entry`, timestamp, _, _) => timestamp }
+  override def eval(): Set[A] =
+    polog.log.filter(_.value.isInstanceOf[AddOp]).map(_.value.asInstanceOf[AddOp].entry.asInstanceOf[A]) // TODO improve
 
-  /**
-   * Removes all [[Versioned]] entries identified by given `timestamps` and returns an updated `ORSet`.
-   */
-  def remove(timestamps: Set[VectorTime]): ORSet[A] =
-    copy(versionedEntries.filterNot(versionedEntry => timestamps.contains(versionedEntry.vectorTimestamp)))
+  override def copyCRDT(polog: POLog, state: Set[A]) = copy(polog, state)
+
+  // TODO this is in some extent, duplicated with what ORSetService does in add! and CRDTServiceOps in effect
+  def add(entry: A, vt: VectorTime): ORSet[A] = addOp(AddOp(entry), vt).asInstanceOf[ORSet[A]] // TODO improve
+
+  def remove(entry: A, vt: VectorTime): ORSet[A] = addOp(RemoveOp(entry), vt).asInstanceOf[ORSet[A]] // TODO improve
 }
 
 object ORSet {
-  def apply[A]: ORSet[A] =
-    new ORSet[A]()
+  def apply[A]: ORSet[A] = ORSet[A]()
 
-  implicit def ORSetServiceOps[A] = new CRDTServiceOps[ORSet[A], Set[A]] {
+  /**
+   * The more interesting rule is that any rmv
+   * is made obsolete by any other timestamp-operation pair; this implies that a rmv
+   * can only exist as the single element of a PO-Log (if it was inserted into an empty
+   * PO-Log), being discarded once other operation arrives (including another rmv),
+   * and never being inserted into a non-empty PO-Log. (Page 11)
+   * @param s
+   * @param op
+   * @tparam A
+   * @return
+   */
+  def merge[A](s: Set[A], op: Versioned[Operation]) = op.value match {
+    case AddOp(e)       => s + e.asInstanceOf
+    case RemoveOp(e, _) => s - e.asInstanceOf // FIXME it will be removeop in the set?
+  }
+
+  implicit def ORSetServiceOps[A] = new CRDTServiceOps[Set[A]] {
     override def zero: ORSet[A] =
       ORSet.apply[A]
 
-    override def value(crdt: ORSet[A]): Set[A] =
-      crdt.value
-
-    override def prepare(crdt: ORSet[A], operation: Any): Try[Option[Any]] = operation match {
-      case op @ RemoveOp(entry, _) => Success {
-        crdt.prepareRemove(entry.asInstanceOf[A]) match {
-          case timestamps if timestamps.nonEmpty =>
-            Some(op.copy(timestamps = timestamps))
-          case _ =>
-            None
-        }
-      }
-      case op =>
-        super.prepare(crdt, op)
-    }
-
-    override def effect(crdt: ORSet[A], operation: Any, event: DurableEvent): ORSet[A] = operation match {
-      case RemoveOp(_, timestamps) =>
-        crdt.remove(timestamps)
-      case AddOp(entry) =>
-        crdt.add(entry.asInstanceOf[A], event.vectorTimestamp)
-    }
   }
 }
 
@@ -98,8 +90,8 @@ object ORSet {
  * @param log Event log.
  * @tparam A [[ORSet]] entry type.
  */
-class ORSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[ORSet[A], Set[A]])
-  extends CRDTService[ORSet[A], Set[A]] {
+class ORSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[Set[A]])
+  extends CRDTService[Set[A]] {
 
   /**
    * Adds `entry` to the OR-Set identified by `id` and returns the updated entry set.
@@ -124,5 +116,4 @@ case class AddOp(entry: Any) extends CRDTFormat
 /**
  * Persistent remove operation used for [[ORSet]] and [[ORCart]].
  */
-case class RemoveOp(entry: Any, timestamps: Set[VectorTime] = Set.empty) extends CRDTFormat
-//#
+case class RemoveOp(entry: Any, timestamps: Set[VectorTime] = Set.empty) extends CRDTFormat // FIXME timestamp needed?

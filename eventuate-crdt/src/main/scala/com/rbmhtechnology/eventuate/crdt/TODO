@@ -1,0 +1,12 @@
+1. CRDTServiceOps, porque necesitaba definir el tipo del CRDT. e.g. CRDTServiceOps[LWWRegister[A], Option[A]]
+   Ahora solo defini CRDTServiceOps[Option[A]], porque effect ahora devuelve un CRDT y con eso me alcanza
+
+2. Porque me tira este error en los test?
+   could not find implicit value for parameter ops: com.rbmhtechnology.eventuate.crdt.CRDTServiceOps[scala.collection.immutable.Set[Int]]
+   Se soluciona importando el companion object import ORSet._ donde se define implict def CRDTServiceOps,
+   pero antes no se necesitaba!
+
+3. ORSet prepareRemove. I can implement this now?
+
+4. Para que ORCart se pueda resolver en funcion de ORSet, las Operation que se guarden en el POLog tienen que "admitir duplicados" (lo que va en contra de la semantica del ORSet)
+   A menos que le pase otra funcion en pruneState que sume cuando se marcan como obsoletas

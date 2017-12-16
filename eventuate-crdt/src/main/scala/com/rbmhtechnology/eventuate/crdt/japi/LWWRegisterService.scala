@@ -15,7 +15,6 @@
  */
 
 package com.rbmhtechnology.eventuate.crdt.japi
-
 import java.util.concurrent.CompletionStage
 import java.util.{ Optional => JOption }
 
@@ -23,7 +22,6 @@ import akka.actor.{ ActorRef, ActorSystem }
 import com.rbmhtechnology.eventuate.crdt.LWWRegister
 
 import scala.compat.java8.OptionConverters._
-
 /**
  * Java API of a replicated [[LWWRegister]] CRDT service.
  *
@@ -33,10 +31,11 @@ import scala.compat.java8.OptionConverters._
  * @tparam A [[LWWRegister]] value type.
  */
 class LWWRegisterService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
-  extends CRDTService[LWWRegister[A], Option[A], JOption[A]] {
+  extends CRDTService[Option[A], JOption[A]] {
 
   import CRDTConverter._
   import system._
+  import LWWRegister._
 
   override protected val delegate =
     new com.rbmhtechnology.eventuate.crdt.LWWRegisterService[A](serviceId, log)

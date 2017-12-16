@@ -14,12 +14,24 @@
  * limitations under the License.
  */
 
-package com.rbmhtechnology.eventuate.log
+package com.rbmhtechnology.eventuate.crdt
 
-import akka.actor.ActorSystem
-import akka.testkit.TestKitBase
+import com.rbmhtechnology.eventuate.Versioned
 
-class StabilitySpec extends TestKitBase {
+package object CRDTTypes {
 
-  override implicit val system: ActorSystem = ActorSystem("stabilitySpec")
+  //type Obsolete[A] = (Versioned[A],Versioned[A]) => Boolean
+  // primer parametros = new Pair (t,o)
+  type Obsolete = (Versioned[Operation], Versioned[Operation]) => Boolean
+
+  type PruneState[A] = (Operation, A, Obsolete) => A
+
+  type UpdateState[A] = (A, Versioned[Operation]) => A
+
+  type Eval[A] = (POLog, A) => A
+
+  type Operation = Any
+
+  //type State = Any
+
 }

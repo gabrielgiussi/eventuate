@@ -346,7 +346,7 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
   }
 
   // Muchas options
-  private val stabilityEnabled = context.system.settings.config.getSafeBoolean("eventuate.log.stability",false)
+  private val stabilityEnabled = context.system.settings.config.getSafeBoolean("eventuate.log.stability", false)
   private val stabilityChecker: Option[ActorRef] = {
     if (stabilityEnabled)
       context.system.settings.config.getSafeStringList("eventuate.log.stability.partitions").map(partitions => context.actorOf(StabilityChecker.props(partitions), s"$id-stability"))
@@ -533,7 +533,7 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
     case Some(sc) => {
       case subscription: SubscribeTCStable      => sc forward subscription
       case unsubscription: UnsubscribeTCStable  => sc forward unsubscription
-      case ScheduleStabilityNotification(delay) => stabilitySchedule = Some(context.system.scheduler.schedule(delay, delay, sc, TriggerStabilityCheck)(context.dispatcher,sc))
+      case ScheduleStabilityNotification(delay) => stabilitySchedule = Some(context.system.scheduler.schedule(delay, delay, sc, TriggerStabilityCheck)(context.dispatcher, sc))
     }
   }
 

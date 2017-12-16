@@ -21,18 +21,16 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import akka.actor.Props
 import akka.testkit.TestProbe
-
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDTService.ValueUpdated
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.log._
 import com.rbmhtechnology.eventuate.log.leveldb._
 import com.typesafe.config.ConfigFactory
-
 import org.scalatest._
 
 import scala.collection.immutable.Seq
 import scala.concurrent.{ ExecutionContext, Future }
-
 object CRDTChaosSpecLeveldb {
   val crdtId = "1"
 
@@ -65,16 +63,17 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
 
   def service(endpoint: ReplicationEndpoint): (ORSetService[String], TestProbe) = {
     implicit val system = endpoint.system
+    import ORSet._ // TODO not needed before
 
     val probe = TestProbe()
     val service = new ORSetService[String](endpoint.id, endpoint.logs("L1")) {
       val startCounter = new AtomicInteger()
       val stopCounter = new AtomicInteger()
 
-      override private[crdt] def onChange(crdt: ORSet[String], operation: Any): Unit = {
+      override private[crdt] def onChange(crdt: CRDTSPI[Set[String]], operation: Option[Operation]): Unit = {
         operation match {
-          case AddOp(entry: String) if entry.startsWith("start") => startCounter.incrementAndGet()
-          case AddOp(entry: String) if entry.startsWith("stop") => stopCounter.incrementAndGet()
+          case Some(AddOp(entry: String)) if entry.startsWith("start") => startCounter.incrementAndGet()
+          case Some(AddOp(entry: String)) if entry.startsWith("stop") => stopCounter.incrementAndGet()
           case _ =>
         }
 
@@ -84,7 +83,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
         }
 
         if (stopCounter.get == 4) {
-          probe.ref ! crdt.value.filterNot(s => s.startsWith("start") || s.startsWith("stop"))
+          probe.ref ! crdt.eval.filterNot(s => s.startsWith("start") || s.startsWith("stop"))
           stopCounter.set(0)
         }
       }
@@ -95,7 +94,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
 
   "A replicated ORSet" must {
     "converge under concurrent updates and write failures" in {
-      val numUpdates = 100
+      val numUpdates = 10
 
       val locationA = location("A", customConfig = customConfig)
       val locationB = location("B", customConfig = customConfig)

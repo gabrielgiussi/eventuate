@@ -24,7 +24,7 @@ import org.scalatest._
 
 import scala.concurrent.Future
 import scala.util.{ Failure, Try }
-
+/*
 class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecLike with Matchers with SingleLocationSpecLeveldb {
   "A CRDTService" must {
     "manage multiple CRDTs identified by name" in {
@@ -165,3 +165,4 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
     }
   }
 }
+*/ 

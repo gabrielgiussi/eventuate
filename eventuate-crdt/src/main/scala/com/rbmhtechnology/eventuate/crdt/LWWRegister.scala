@@ -18,11 +18,10 @@ package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
-
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 import scala.concurrent.Future
-
 /**
  * Operation-based LWW-Register CRDT with an [[MVRegister]]-based implementation. Instead of returning multiple
  * values in case of concurrent assignments, the last written value is returned. The last written value is
@@ -38,11 +37,7 @@ import scala.concurrent.Future
  * @param mvRegister Initially empty [[MVRegister]].
  * @see [[http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf A comprehensive study of Convergent and Commutative Replicated Data Types]], specification 9
  */
-case class LWWRegister[A](mvRegister: MVRegister[A] = MVRegister.apply[A]) extends CRDTFormat {
-  def value: Option[A] = {
-    mvRegister.versioned.toVector.sorted(LWWRegister.LWWOrdering[A]).lastOption.map(_.value)
-
-  }
+case class LWWRegister[A](mvRegister: MVRegister[A] = MVRegister.apply[A]) extends CRDTSPI[Option[A]] { // with CRDTHelper[A,LWWRegister[A]]
 
   /**
    * Assigns a [[Versioned]] value from `v` and `vectorTimestamp` and returns an updated MV-Register.
@@ -55,29 +50,35 @@ case class LWWRegister[A](mvRegister: MVRegister[A] = MVRegister.apply[A]) exten
   def assign(v: A, vectorTimestamp: VectorTime, systemTimestamp: Long, emitterId: String): LWWRegister[A] = {
     copy(mvRegister.assign(v, vectorTimestamp, systemTimestamp, emitterId))
   }
+
+  // FIXME here we are accessing the inner polog of the MVRegister (they were doing the same before with mvRegister.versioned)
+  // FIXME, if we want to avoid this we must change the type of MVRegister to Versioned[A]
+  // Maybe having MVRegister[Versioned[A]] and MVRegister[A]
+  override def eval(): Option[A] =
+    mvRegister.polog.log.toVector.sorted(LWWRegister.LWWOrdering[A]).lastOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A]) // TODO to many cast
+
+  override protected[crdt] def obs: Obsolete = throw new NotImplementedError() // TODO this demonstrates a bad smell in the design
+
+  override def addOp(op: Operation, t: VectorTime, systemTimestamp: Long = 0L, emitterId: String = ""): CRDTSPI[Option[A]] = copy(mvRegister.addOp(op, t, systemTimestamp, emitterId).asInstanceOf[MVRegister[A]])
+
+  //override protected[crdt] def copyCRDT(polog: POLog, state: A): LWWRegister[A] = copy()
 }
 
 object LWWRegister {
   def apply[A]: LWWRegister[A] =
     new LWWRegister[A]()
 
-  implicit def LWWRegisterServiceOps[A] = new CRDTServiceOps[LWWRegister[A], Option[A]] {
+  implicit def LWWRegisterServiceOps[A] = new CRDTServiceOps[Option[A]] {
     override def zero: LWWRegister[A] =
       LWWRegister.apply[A]()
-
-    override def value(crdt: LWWRegister[A]): Option[A] =
-      crdt.value
 
     override def precondition: Boolean =
       false
 
-    override def effect(crdt: LWWRegister[A], operation: Any, event: DurableEvent): LWWRegister[A] = operation match {
-      case AssignOp(value) => crdt.assign(value.asInstanceOf[A], event.vectorTimestamp, event.systemTimestamp, event.emitterId)
-    }
   }
 
-  implicit def LWWOrdering[A] = new Ordering[Versioned[A]] {
-    override def compare(x: Versioned[A], y: Versioned[A]): Int =
+  implicit def LWWOrdering[A] = new Ordering[Versioned[_]] {
+    override def compare(x: Versioned[_], y: Versioned[_]): Int =
       if (x.systemTimestamp == y.systemTimestamp)
         x.creator.compareTo(y.creator)
       else
@@ -92,8 +93,8 @@ object LWWRegister {
  * @param log Event log.
  * @tparam A [[LWWRegister]] value type.
  */
-class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[LWWRegister[A], Option[A]])
-  extends CRDTService[LWWRegister[A], Option[A]] {
+class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[Option[A]])
+  extends CRDTService[Option[A]] {
 
   /**
    * Assigns a `value` to the LWW-Register identified by `id` and returns the updated LWW-Register value.

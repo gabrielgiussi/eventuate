@@ -24,7 +24,7 @@ import akka.actor.{ ActorRef, ActorSystem }
 import com.rbmhtechnology.eventuate.crdt._
 
 import scala.collection.JavaConverters._
-
+/*
 /**
  * Replicated [[ORCart]] CRDT service.
  *
@@ -62,3 +62,4 @@ class ORCartService[A](val serviceId: String, val log: ActorRef, implicit val sy
   def remove(id: String, key: A): CompletionStage[JMap[A, JInt]] =
     delegate.remove(id, key).asJava
 }
+*/ 

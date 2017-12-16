@@ -20,8 +20,8 @@ import akka.actor._
 import akka.remote.testkit._
 import akka.remote.transport.ThrottlerTransportAdapter.Direction
 import akka.testkit.TestProbe
-
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.typesafe.config.ConfigFactory
 
 class ReplicatedORSetSpecLeveldb extends ReplicatedORSetSpec with MultiNodeSupportLeveldb
@@ -45,6 +45,7 @@ object ReplicatedORSetConfig extends MultiNodeReplicationConfig {
 
 abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) with MultiNodeWordSpec with MultiNodeReplicationEndpoint {
   import ReplicatedORSetConfig._
+  import ORSet._ // TODO why this wasn't needed before?
 
   def initialParticipants: Int =
     roles.size
@@ -58,7 +59,9 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
       runOn(nodeA) {
         val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
         val service = new ORSetService[Int]("A", endpoint.log) {
-          override private[crdt] def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value
+          //override private[crdt] def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value TODO
+          override private[crdt] def onChange(crdt: CRDTSPI[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
+
         }
 
         service.add("x", 1)
@@ -84,7 +87,8 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
       runOn(nodeB) {
         val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
         val service = new ORSetService[Int]("B", endpoint.log) {
-          override private[crdt] def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value
+          // override private[crdt] def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value TODO
+          override private[crdt] def onChange(crdt: CRDTSPI[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value()
         }
 
         service.value("x")

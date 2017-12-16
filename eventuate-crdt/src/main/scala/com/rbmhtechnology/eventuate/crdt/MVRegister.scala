@@ -17,11 +17,10 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
-
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Obsolete
 
 import scala.concurrent.Future
-
 /**
  * Operation-based MV-Register CRDT. Has several [[Versioned]] values assigned in case of concurrent assignments,
  * otherwise, a single [[Versioned]] value. Concurrent assignments can be reduced to a single assignment by
@@ -32,9 +31,7 @@ import scala.concurrent.Future
  * @tparam A Assigned value type.
  * @see [[http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf A comprehensive study of Convergent and Commutative Replicated Data Types]]
  */
-case class MVRegister[A](versioned: Set[Versioned[A]] = Set.empty[Versioned[A]]) extends CRDTFormat {
-  def value: Set[A] =
-    versioned.map(_.value)
+case class MVRegister[A](override val polog: POLog = POLog(), override val state: Set[A] = Set.empty[A]) extends CRDT[Set[A]] with CRDTHelper[Set[A], MVRegister[A]] {
 
   /**
    * Assigns a [[Versioned]] value from `v` and `vectorTimestamp` and returns an updated MV-Register.
@@ -45,28 +42,32 @@ case class MVRegister[A](versioned: Set[Versioned[A]] = Set.empty[Versioned[A]])
    * @param emitterId id of the value emitter.
    */
   def assign(v: A, vectorTimestamp: VectorTime, systemTimestamp: Long = 0L, emitterId: String = ""): MVRegister[A] = {
-    val concurrent = versioned.filter(_.vectorTimestamp <-> vectorTimestamp)
-    copy(concurrent + Versioned(v, vectorTimestamp, systemTimestamp, emitterId))
+    addOp(AssignOp(v), vectorTimestamp, systemTimestamp, emitterId).asInstanceOf[MVRegister[A]]
   }
+
+  //def clear(t: VectorTime): MVRegister[A] = addOp(Clear(),t).asInstanceOf[MVRegister[A]]
+
+  // the effect of a write in making all writes in its causal past obsolete, regardless of value written
+  // obsolete((t, [wr, v]), (t', [wr, v'])) = t < t'
+  override protected[crdt] val obs: Obsolete = (op1, op2) => op1.vectorTimestamp < op2.vectorTimestamp
+
+  // eval(rd, s) = {v | (t, [wr, v]) ∈ s}
+  override def eval(): Set[A] = polog.log.map(_.value.asInstanceOf[AssignOp].value).asInstanceOf[Set[A]]
+
+  override def copyCRDT(polog: POLog, state: Set[A]): MVRegister[A] = copy(polog, state)
 }
 
 object MVRegister {
   def apply[A]: MVRegister[A] =
     new MVRegister[A]()
 
-  implicit def MVRegisterServiceOps[A] = new CRDTServiceOps[MVRegister[A], Set[A]] {
+  implicit def MVRegisterServiceOps[A] = new CRDTServiceOps[Set[A]] {
     override def zero: MVRegister[A] =
       MVRegister.apply[A]
-
-    override def value(crdt: MVRegister[A]): Set[A] =
-      crdt.value
 
     override def precondition: Boolean =
       false
 
-    override def effect(crdt: MVRegister[A], operation: Any, event: DurableEvent): MVRegister[A] = operation match {
-      case AssignOp(value) => crdt.assign(value.asInstanceOf[A], event.vectorTimestamp, event.systemTimestamp, event.emitterId)
-    }
   }
 }
 
@@ -77,8 +78,8 @@ object MVRegister {
  * @param log Event log.
  * @tparam A [[MVRegister]] value type.
  */
-class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[MVRegister[A], Set[A]])
-  extends CRDTService[MVRegister[A], Set[A]] {
+class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[Set[A]])
+  extends CRDTService[Set[A]] {
 
   /**
    * Assigns a `value` to the MV-Register identified by `id` and returns the updated MV-Register value.
@@ -93,3 +94,5 @@ class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit va
  * Persistent assign operation used for [[MVRegister]] and [[LWWRegister]].
  */
 case class AssignOp(value: Any) extends CRDTFormat
+
+//case class Clear() extends CRDTFormat

@@ -15,7 +15,6 @@
  */
 
 package com.rbmhtechnology.eventuate.crdt.japi
-
 import java.util.concurrent.CompletionStage
 import java.util.{ Set => JSet }
 
@@ -34,10 +33,11 @@ import scala.collection.immutable.Set
  * @tparam A [[MVRegister]] value type.
  */
 class MVRegisterService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
-  extends CRDTService[MVRegister[A], Set[A], JSet[A]] {
+  extends CRDTService[Set[A], JSet[A]] {
 
   import CRDTConverter._
   import system._
+  import MVRegister._
 
   override protected val delegate =
     new com.rbmhtechnology.eventuate.crdt.MVRegisterService[A](serviceId, log)
