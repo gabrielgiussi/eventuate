@@ -59,8 +59,7 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
       runOn(nodeA) {
         val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
         val service = new ORSetService[Int]("A", endpoint.log) {
-          //override private[crdt] def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value TODO
-          override private[crdt] def onChange(crdt: CRDTSPI[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
+          override private[crdt] def onChange(crdt: CRDT[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
 
         }
 
@@ -87,8 +86,7 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
       runOn(nodeB) {
         val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
         val service = new ORSetService[Int]("B", endpoint.log) {
-          // override private[crdt] def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value TODO
-          override private[crdt] def onChange(crdt: CRDTSPI[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value()
+          override private[crdt] def onChange(crdt: CRDT[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
         }
 
         service.value("x")

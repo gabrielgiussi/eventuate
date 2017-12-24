@@ -33,75 +33,42 @@ import scala.util.{ Success, Try }
  */
 case class ORCartEntry[A](key: A, quantity: Int) extends CRDTFormat
 
-/**
- * Operation-based OR-Cart CRDT with an [[ORSet]]-based implementation. [[Versioned]] entry values are of
- * type [[ORCartEntry]] and are uniquely identified with vector timestamps.
- *
- * @param orSet Backing [[ORSet]].
- * @tparam A Key type.
- * @see [[http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf A comprehensive study of Convergent and Commutative Replicated Data Types]], specification 21.
- * @see [[ORCartEntry]]
- */
-case class ORCart[A](orSet: ORSet[Versioned[ORCartEntry[A]]] = ORSet[Versioned[ORCartEntry[A]]]()) extends CRDTSPI[Map[A, Int]] {
-  /**
-   * Returns the `quantity`s of the contained `key`s, reducing multiple [[ORCartEntry]]s with the same `key`
-   * by adding their `quantity`s.
-   */
-  /*
-  def value: Map[A, Int] = {
-    orSet.versionedEntries.foldLeft(Map.empty[A, Int]) {
-      case (acc, Versioned(ORCartEntry(key, quantity), _, _, _)) => acc.get(key) match {
-        case Some(c) => acc + (key -> (c + quantity))
-        case None => acc + (key -> quantity)
+object ORCart {
+  def apply[A]: CRDT[Map[A, Int]] = CRDT(Map.empty[A, Int])
+
+  implicit class ORCartCRDT[A](crdt: CRDT[Map[A, Int]]) {
+
+    def add(key: A, quantity: Int, timestamp: VectorTime)(implicit ops: CRDTNonCommutativePureOp[Map[A, Int]]) = ops.effect(crdt, AddOp(ORCartEntry(key, quantity)), timestamp)
+    def remove(key: A, t: VectorTime)(implicit ops: CRDTNonCommutativePureOp[Map[A, Int]]) = ops.effect(crdt, RemoveOp(key), t)
+  }
+
+  implicit def ORCartServiceOps[A] = new CRDTNonCommutativePureOp[Map[A, Int]] {
+    override def zero: CRDT[Map[A, Int]] = ORCart.apply[A]
+
+    override val obs: Obsolete = (op1, op2) => {
+      ((op1.vectorTimestamp, op1.value), (op2.vectorTimestamp, op2.value)) match {
+        case ((t1, AddOp(ORCartEntry(k1, _))), (t2, RemoveOp(k2, _))) => (t1 < t2) && (k1 equals k2)
+        case ((_, RemoveOp(_, _)), _) => true
+        case _ => false
       }
     }
-  }*/
 
-  /**
-   * Adds the given `quantity` of `key`, uniquely identified by `timestamp`, and returns an updated `ORCart`.
-   */
-  def add(key: A, quantity: Int, timestamp: VectorTime): ORCart[A] =
-    copy(orSet = orSet.add(Versioned(ORCartEntry(key, quantity), timestamp), timestamp))
-
-  /**
-   * Collects all timestamps of given `key`.
-   */
-  //def prepareRemove(key: A): Set[VectorTime] =
-  //  orSet.versionedEntries.collect { case Versioned(ORCartEntry(`key`, _), timestamp, _, _) => timestamp }
-
-  /**
-   * Removes all [[ORCartEntry]]s identified by given `timestamps` and returns an updated `ORCart`.
-   */
-  //def remove(timestamps: Set[VectorTime]): ORCart[A] =
-  //  copy(orSet = orSet.remove(timestamps))
-  // It should be better if I remove by key but doesn't work
-  def remove(key: A, quantity: Int, t: VectorTime) = copy(orSet.remove(Versioned(ORCartEntry(key, quantity), t), t))
-  //remove byKeyorSet.eval().find(_.value.key equals (key)).fold(this)(e => copy(orSet.remove(e, t)))
-
-  override protected[crdt] def obs: Obsolete = throw new NotImplementedError() // TODO this demonstrates a bad smell in the design
-
-  override def addOp(op: Operation, t: VectorTime, systemTimestamp: Long, emitterId: String): CRDTSPI[Map[A, Int]] =
-    copy(orSet.addOp(op, t, systemTimestamp, emitterId).asInstanceOf[ORSet[Versioned[ORCartEntry[A]]]])
-
-  override def eval(): Map[A, Int] = {
-    println(orSet.polog)
-    orSet.polog.log.foldLeft(Map.empty[A, Int]) {
+    override def customEval(crdt: CRDT[Map[A, Int]]): Map[A, Int] = crdt.polog.log.foldLeft(Map.empty[A, Int]) {
       case (acc, Versioned(AddOp(ORCartEntry(key: A, quantity)), _, _, _)) => acc.get(key) match {
         case Some(c) => acc + (key -> (c + quantity))
         case None    => acc + (key -> quantity)
       }
+      case (acc, Versioned(RemoveOp(_, _), _, _, _)) => acc
     }
-  }
-}
 
-object ORCart {
-  def apply[A]: ORCart[A] =
-    new ORCart[A]()
-
-  implicit def ORCartServiceOps[A] = new CRDTServiceOps[Map[A, Int]] {
-    override def zero: ORCart[A] =
-      ORCart.apply[A]
-
+    override protected def mergeState(stableState: Map[A, Int], evaluatedState: Map[A, Int]): Map[A, Int] = {
+      val keys = stableState.keys ++ evaluatedState.keys
+      keys.map(k => {
+        val quantity1 = stableState.getOrElse(k, 0)
+        val quantity2 = evaluatedState.getOrElse(k, 0)
+        (k, quantity1 + quantity2)
+      }).toMap
+    }
   }
 }
 
@@ -118,8 +85,8 @@ object ORCart {
  * @param log       Event log.
  * @tparam A [[ORCart]] key type.
  */
-class ORCartService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[Map[A, Int]])
-  extends CRDTService[Map[A, Int]] {
+class ORCartService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[CRDT[Map[A, Int]], Map[A, Int]])
+  extends CRDTService[CRDT[Map[A, Int]], Map[A, Int]] {
 
   /**
    * Adds the given `quantity` of `key` to the OR-Cart identified by `id` and returns the updated OR-Cart content.

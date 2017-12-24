@@ -34,22 +34,24 @@ import scala.util._
 /**
  * Typeclass to be implemented by CRDTs if they shall be managed by [[CRDTService]]
  *
- * //@tparam A CRDT type
+ * @tparam A CRDT type
  * @tparam B CRDT value type
  */
 //trait CRDTServiceOps[A <: CRDT[B] with CRDTHelper[B, A], B] {
-trait CRDTServiceOps[B] {
+trait CRDTServiceOps[A, B] {
 
   /**
    * Default CRDT instance.
    */
-  def zero: CRDTSPI[B]
+  def zero: A
 
   /**
    * Returns the CRDT value (for example, the entries of an OR-Set)
    */
   //def value(crdt: A): B = eval(crdt.polog, crdt.state)
-  final def value(crdt: CRDTSPI[B]): B = crdt.eval
+  final def value(crdt: A): B = eval(crdt)
+
+  def eval(crdt: A): B
 
   /**
    * Must return `true` if CRDT checks preconditions. Should be overridden to return
@@ -61,15 +63,14 @@ trait CRDTServiceOps[B] {
   /**
    * Update phase 1 ("atSource"). Prepares an operation for phase 2.
    */
-  final def prepare(crdt: CRDTSPI[B], operation: Operation): Try[Option[Operation]] = Success(Some(operation))
+  def prepare(crdt: A, operation: Operation): Try[Option[Operation]] = Success(Some(operation))
 
   /**
    * Update phase 2 ("downstream").
    */
   //def effect(crdt: A, operation: Any, event: DurableEvent): A
-  final def effect(crdt: CRDTSPI[B], op: Operation, t: VectorTime): CRDTSPI[B] = {
-    crdt.addOp(op, t)
-  }
+  def effect(crdt: A, op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): A
+
   /*
   final def stable(crdt: CRDTSPI[B], t: VectorTime): CRDTSPI[B] = {
     // TODO Aca tengo que buscar todas operaciones que son stables en vectortime
@@ -113,7 +114,7 @@ private class CRDTServiceSettings(config: Config) {
  * @tparam B CRDT value type
  */
 //trait CRDTService[A <: CRDT[B] with CRDTHelper[B, A], B] {
-trait CRDTService[B] {
+trait CRDTService[A, B] {
   import CRDTService._
 
   private var manager: Option[ActorRef] = None
@@ -142,7 +143,7 @@ trait CRDTService[B] {
   /**
    * CRDT service operations.
    */
-  def ops: CRDTServiceOps[B]
+  def ops: CRDTServiceOps[A, B]
 
   /**
    * Starts the CRDT service.
@@ -215,7 +216,7 @@ trait CRDTService[B] {
 
   case class GetTimestampsReply(timestamps: Set[VectorTime])
 
-  private case class OnChange(crdt: CRDTSPI[B], operation: Option[Operation])
+  private case class OnChange(crdt: A, operation: Option[Operation])
 
   private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor {
     override val id =
@@ -224,7 +225,7 @@ trait CRDTService[B] {
     override val aggregateId =
       Some(s"${ops.zero.getClass.getSimpleName}_${crdtId}")
 
-    var crdt: CRDTSPI[B] =
+    var crdt: A =
       ops.zero
 
     // TODO where do this?
@@ -268,15 +269,14 @@ trait CRDTService[B] {
 
     override def onEvent = {
       case evt @ ValueUpdated(operation) =>
-        //crdt = ops.effect(crdt, operation, lastHandledEvent)
-        crdt = ops.effect(crdt, operation, lastHandledEvent.vectorTimestamp)
+        crdt = ops.effect(crdt, operation, lastHandledEvent.vectorTimestamp, lastHandledEvent.systemTimestamp, lastHandledEvent.emitterId)
         context.parent ! OnChange(crdt, Some(operation))
       // case Stable(timestamp) if (lastHandledEvent.localLogId == lastHandledEvent.processId) => crdt = ops.stable(crdt, timestamp.asInstanceOf[VectorTime]) TODO
     }
 
     override def onSnapshot = {
       case snapshot =>
-        crdt = snapshot.asInstanceOf[CRDT[B]]
+        crdt = snapshot.asInstanceOf[A]
         context.parent ! OnChange(crdt, None)
     }
 
@@ -307,5 +307,5 @@ trait CRDTService[B] {
   }
 
   /** For testing purposes only */
-  private[crdt] def onChange(crdt: CRDTSPI[B], operation: Option[Operation]): Unit = ()
+  private[crdt] def onChange(crdt: A, operation: Option[Operation]): Unit = ()
 }

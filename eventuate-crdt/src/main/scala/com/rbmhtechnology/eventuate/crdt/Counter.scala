@@ -17,27 +17,34 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
-import com.rbmhtechnology.eventuate.Versioned
+import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 import scala.concurrent.Future
 
 object Counter {
-  def apply[A: Integral]: Counter[A] =
-    Counter[A](state = implicitly[Integral[A]].zero)
+
+  implicit class CounterCRDT[A: Integral](crdt: A) {
+
+    def update(delta: A, vt: VectorTime)(implicit ops: CRDTCommutativePureOp[A]) = ops.effect(crdt, UpdateOp(delta), vt)
+
+  }
+
+  def apply[A: Integral]: A = implicitly[Integral[A]].zero
 
   /**
    * Adds `delta` (which can also be negative) to the counter `value` and
    * returns an updated counter.
+   *
+   * implicit def merge[A: Integral](s: A, op: Versioned[Operation]) = op.value match {
+   * case UpdateOp(delta) => implicitly[Integral[A]].plus(s, delta.asInstanceOf[A])
+   * }
    */
-  implicit def merge[A: Integral](s: A, op: Versioned[Operation]) = op.value match {
-    case UpdateOp(delta) => implicitly[Integral[A]].plus(s, delta.asInstanceOf[A])
-  }
-
   //implicit def CounterServiceOps[A: Integral] = new CRDTServiceOps[Counter[A], A] {
-  implicit def CounterServiceOps[A: Integral] = new CRDTServiceOps[A] {
-    override def zero: Counter[A] =
-      Counter.apply[A]
+  // TODO
+  implicit def CounterServiceOps[A: Integral] = new CRDTCommutativePureOp[A] {
+
+    override def zero: A = Counter.apply[A]
 
     /*
     override val obs: Obsolete = (_, _) => false
@@ -49,29 +56,8 @@ object Counter {
     override def precondition: Boolean =
       false
 
+    override def effect(crdt: A, op: Operation): A = implicitly[Integral[A]].plus(crdt, op.asInstanceOf[UpdateOp].delta.asInstanceOf[A])
   }
-}
-
-/**
- * Operation-based Counter CRDT.
- *
- * @param state Current counter value.
- * @tparam A Counter value type.
- * @see [[http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf A comprehensive study of Convergent and Commutative Replicated Data Types]]
- */
-case class Counter[A: Integral](override val polog: POLog = POLog(), override val state: A) extends CRDT[A] with CRDTHelper[A, Counter[A]] {
-
-  override def copyCRDT(polog: POLog, state: A) = copy(polog, state)
-
-  override def eval = {
-    polog.log.foldLeft(state)((s: A, op: Versioned[Operation]) => Counter.merge(s, op))
-  }
-
-  override val obs: Obsolete = (_, _) => false
-
-  override val pruneState = (op: Operation, state: A, obs: Obsolete) => state
-
-  //override val updateState = (state: A, op: Versioned[Operation]) => Counter.merge(state, op)
 }
 
 /**
@@ -81,9 +67,9 @@ case class Counter[A: Integral](override val polog: POLog = POLog(), override va
  * @param log       Event log.
  * @tparam A Counter value type.
  */
-class CounterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, integral: Integral[A], val ops: CRDTServiceOps[A])
+class CounterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, integral: Integral[A], val ops: CRDTServiceOps[A, A])
   //extends CRDTService[Counter[A], A] {
-  extends CRDTService[A] {
+  extends CRDTService[A, A] {
 
   /**
    * Adds `delta` (which can also be negative) to the counter identified by `id` and returns the updated counter value.

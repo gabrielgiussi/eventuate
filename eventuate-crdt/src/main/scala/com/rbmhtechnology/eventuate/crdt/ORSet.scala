@@ -18,46 +18,18 @@ package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
 import com.rbmhtechnology.eventuate._
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation, PruneState, UpdateState }
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 import scala.concurrent.Future
 import scala.collection.immutable.Set
-import scala.util.{ Success, Try }
-
-/**
- * Operation-based OR-Set CRDT. [[Versioned]] entries are uniquely identified with vector timestamps.
- *
- * @param versionedEntries [[Versioned]] entries.
- * @tparam A Entry value type.
- *
- * @see [[http://hal.upmc.fr/docs/00/55/55/88/PDF/techreport.pdf A comprehensive study of Convergent and Commutative Replicated Data Types]], specification 15
- */
-case class ORSet[A](polog: POLog = POLog(), state: Set[A] = Set.empty[A]) extends CRDT[Set[A]] with CRDTHelper[Set[A], ORSet[A]] {
-  /**
-   * Returns all entries, masking duplicates of different version.
-   */
-
-  override protected[crdt] val obs: Obsolete = (op1, op2) => {
-    ((op1.vectorTimestamp, op1.value), (op2.vectorTimestamp, op2.value)) match {
-      case ((t1, AddOp(v1)), (t2, AddOp(v2)))       => (t1 < t2) && (v1 equals v2)
-      case ((t1, AddOp(v1)), (t2, RemoveOp(v2, _))) => (t1 < t2) && (v1 equals v2)
-      case ((_, RemoveOp(_, _)), _)                 => true
-    }
-  }
-
-  override def eval(): Set[A] =
-    polog.log.filter(_.value.isInstanceOf[AddOp]).map(_.value.asInstanceOf[AddOp].entry.asInstanceOf[A]) // TODO improve
-
-  override def copyCRDT(polog: POLog, state: Set[A]) = copy(polog, state)
-
-  // TODO this is in some extent, duplicated with what ORSetService does in add! and CRDTServiceOps in effect
-  def add(entry: A, vt: VectorTime): ORSet[A] = addOp(AddOp(entry), vt).asInstanceOf[ORSet[A]] // TODO improve
-
-  def remove(entry: A, vt: VectorTime): ORSet[A] = addOp(RemoveOp(entry), vt).asInstanceOf[ORSet[A]] // TODO improve
-}
 
 object ORSet {
-  def apply[A]: ORSet[A] = ORSet[A]()
+  def apply[A]: CRDT[Set[A]] = CRDT(Set.empty[A])
+
+  implicit class ORSetCRDT[A](crdt: CRDT[Set[A]]) {
+    def add(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOp[Set[A]]) = ops.effect(crdt, AddOp(value), vectorTime)
+    def remove(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOp[Set[A]]) = ops.effect(crdt, RemoveOp(value), vectorTime)
+  }
 
   /**
    * The more interesting rule is that any rmv
@@ -75,10 +47,22 @@ object ORSet {
     case RemoveOp(e, _) => s - e.asInstanceOf // FIXME it will be removeop in the set?
   }
 
-  implicit def ORSetServiceOps[A] = new CRDTServiceOps[Set[A]] {
-    override def zero: ORSet[A] =
-      ORSet.apply[A]
+  implicit def ORSetServiceOps[A] = new CRDTNonCommutativePureOp[Set[A]] {
 
+    override val obs: Obsolete = (op1, op2) => {
+      ((op1.vectorTimestamp, op1.value), (op2.vectorTimestamp, op2.value)) match {
+        case ((t1, AddOp(v1)), (t2, AddOp(v2)))       => (t1 < t2) && (v1 equals v2)
+        case ((t1, AddOp(v1)), (t2, RemoveOp(v2, _))) => (t1 < t2) && (v1 equals v2)
+        case ((_, RemoveOp(_, _)), _)                 => true
+      }
+    }
+
+    override def zero: CRDT[Set[A]] = ORSet.apply[A]
+
+    override def customEval(crdt: CRDT[Set[A]]): Set[A] =
+      crdt.polog.log.filter(_.value.isInstanceOf[AddOp]).map(_.value.asInstanceOf[AddOp].entry.asInstanceOf[A])
+
+    override protected def mergeState(stableState: Set[A], evaluatedState: Set[A]): Set[A] = stableState ++ evaluatedState
   }
 }
 
@@ -90,8 +74,8 @@ object ORSet {
  * @param log Event log.
  * @tparam A [[ORSet]] entry type.
  */
-class ORSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[Set[A]])
-  extends CRDTService[Set[A]] {
+class ORSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[CRDT[Set[A]], Set[A]])
+  extends CRDTService[CRDT[Set[A]], Set[A]] {
 
   /**
    * Adds `entry` to the OR-Set identified by `id` and returns the updated entry set.

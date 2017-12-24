@@ -15,6 +15,7 @@
  */
 
 package com.rbmhtechnology.eventuate.crdt.japi
+
 import java.util.concurrent.CompletionStage
 
 import com.rbmhtechnology.eventuate.SnapshotMetadata
@@ -22,10 +23,11 @@ import com.rbmhtechnology.eventuate.SnapshotMetadata
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.{ ExecutionContext, Future }
 import scala.language.implicitConversions
-trait CRDTService[B, C] {
+
+trait CRDTService[A, B, C] {
   import CRDTConverter._
 
-  protected def delegate: com.rbmhtechnology.eventuate.crdt.CRDTService[B]
+  protected def delegate: com.rbmhtechnology.eventuate.crdt.CRDTService[A, B]
 
   implicit protected def c: CRDTConverter[B, C]
 

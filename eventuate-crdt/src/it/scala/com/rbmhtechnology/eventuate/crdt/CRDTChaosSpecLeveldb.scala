@@ -15,7 +15,6 @@
  */
 
 package com.rbmhtechnology.eventuate.crdt
-
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -63,14 +62,14 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
 
   def service(endpoint: ReplicationEndpoint): (ORSetService[String], TestProbe) = {
     implicit val system = endpoint.system
-    import ORSet._ // TODO not needed before
+    import ORSet._
 
     val probe = TestProbe()
     val service = new ORSetService[String](endpoint.id, endpoint.logs("L1")) {
       val startCounter = new AtomicInteger()
       val stopCounter = new AtomicInteger()
 
-      override private[crdt] def onChange(crdt: CRDTSPI[Set[String]], operation: Option[Operation]): Unit = {
+      override private[crdt] def onChange(crdt: CRDT[Set[String]], operation: Option[Operation]): Unit = {
         operation match {
           case Some(AddOp(entry: String)) if entry.startsWith("start") => startCounter.incrementAndGet()
           case Some(AddOp(entry: String)) if entry.startsWith("stop") => stopCounter.incrementAndGet()
@@ -83,7 +82,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
         }
 
         if (stopCounter.get == 4) {
-          probe.ref ! crdt.eval.filterNot(s => s.startsWith("start") || s.startsWith("stop"))
+          probe.ref ! ops.eval(crdt).filterNot(s => s.startsWith("start") || s.startsWith("stop"))
           stopCounter.set(0)
         }
       }

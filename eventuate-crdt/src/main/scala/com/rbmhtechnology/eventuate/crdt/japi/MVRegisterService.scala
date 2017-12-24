@@ -15,11 +15,12 @@
  */
 
 package com.rbmhtechnology.eventuate.crdt.japi
+
 import java.util.concurrent.CompletionStage
 import java.util.{ Set => JSet }
 
 import akka.actor.{ ActorRef, ActorSystem }
-import com.rbmhtechnology.eventuate.crdt.MVRegister
+import com.rbmhtechnology.eventuate.crdt.{ CRDT, MVRegister }
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Set
@@ -33,7 +34,7 @@ import scala.collection.immutable.Set
  * @tparam A [[MVRegister]] value type.
  */
 class MVRegisterService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
-  extends CRDTService[Set[A], JSet[A]] {
+  extends CRDTService[CRDT[Set[A]], Set[A], JSet[A]] {
 
   import CRDTConverter._
   import system._

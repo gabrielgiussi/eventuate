@@ -20,10 +20,11 @@ import java.util.concurrent.CompletionStage
 import java.util.{ Set => JSet }
 
 import akka.actor.{ ActorRef, ActorSystem }
-import com.rbmhtechnology.eventuate.crdt.ORSet
+import com.rbmhtechnology.eventuate.crdt.{ CRDT, ORSet }
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Set
+
 /**
  * Java API of a replicated [[ORSet]] CRDT service.
  *
@@ -33,11 +34,11 @@ import scala.collection.immutable.Set
  * @tparam A [[ORSet]] entry type.
  */
 class ORSetService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
-  extends CRDTService[Set[A], JSet[A]] {
+  extends CRDTService[CRDT[Set[A]], Set[A], JSet[A]] {
 
   import CRDTConverter._
   import system._
-  import ORSet._ // before wasn't needed
+  import ORSet._
 
   override protected val delegate =
     new com.rbmhtechnology.eventuate.crdt.ORSetService[A](serviceId, log)

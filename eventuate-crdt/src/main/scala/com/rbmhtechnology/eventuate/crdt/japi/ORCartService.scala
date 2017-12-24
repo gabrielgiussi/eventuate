@@ -24,7 +24,7 @@ import akka.actor.{ ActorRef, ActorSystem }
 import com.rbmhtechnology.eventuate.crdt._
 
 import scala.collection.JavaConverters._
-/*
+
 /**
  * Replicated [[ORCart]] CRDT service.
  *
@@ -39,10 +39,11 @@ import scala.collection.JavaConverters._
  * @tparam A [[ORCart]] key type.
  */
 class ORCartService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
-  extends CRDTService[ORCart[A], Map[A, Int], JMap[A, JInt]] {
+  extends CRDTService[CRDT[Map[A, Int]], Map[A, Int], JMap[A, JInt]] {
 
   import CRDTConverter._
   import system._
+  import ORCart._
 
   override protected val delegate =
     new com.rbmhtechnology.eventuate.crdt.ORCartService[A](serviceId, log)
@@ -62,4 +63,3 @@ class ORCartService[A](val serviceId: String, val log: ActorRef, implicit val sy
   def remove(id: String, key: A): CompletionStage[JMap[A, JInt]] =
     delegate.remove(id, key).asJava
 }
-*/ 

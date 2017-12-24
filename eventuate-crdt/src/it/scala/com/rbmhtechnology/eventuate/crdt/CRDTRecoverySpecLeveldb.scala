@@ -29,8 +29,7 @@ class CRDTRecoverySpecLeveldb extends TestKit(ActorSystem("test")) with WordSpec
   var probe: TestProbe = _
 
   def service(serviceId: String) = new ORSetService[Int](serviceId, log) {
-    //override def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value TODO
-    override def onChange(crdt: CRDTSPI[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
+    override def onChange(crdt: CRDT[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
   }
 
   override def beforeEach(): Unit = {

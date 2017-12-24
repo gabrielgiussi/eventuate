@@ -33,6 +33,147 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
 
   import commonSerializer.payloadSerializer
 
+  private val ValueUpdatedClass = classOf[ValueUpdated]
+  private val CRDTClass = classOf[CRDT[_]]
+  private val UpdatedOpClass = classOf[UpdateOp]
+  private val AssignOpClass = classOf[AssignOp]
+  private val AddOpClass = classOf[AddOp]
+  private val RemoveOpClass = classOf[RemoveOp]
+
+  override def identifier: Int = 22567
+
+  override def includeManifest: Boolean = true
+
+  override def toBinary(o: AnyRef): Array[Byte] = o match {
+    case c: CRDT[_] =>
+      crdtFormatBuilder(c).build().toByteArray
+    case v: ValueUpdated =>
+      valueUpdatedFormat(v).build().toByteArray
+    case o: UpdateOp =>
+      updateOpFormatBuilder(o).build().toByteArray
+    case o: AddOp =>
+      addOpFormatBuilder(o).build().toByteArray
+    case o: RemoveOp =>
+      removeOpFormatBuilder(o).build().toByteArray
+    case o: AssignOp =>
+      assignOpFormatBuilder(o).build().toByteArray
+    case _ =>
+      throw new IllegalArgumentException(s"can't serialize object of type ${o.getClass}")
+  }
+
+  override def fromBinary(bytes: Array[Byte], manifest: Option[Class[_]]): AnyRef = manifest match {
+    case None => throw new IllegalArgumentException("manifest required")
+    case Some(clazz) => clazz match {
+      case CRDTClass =>
+        crdt(CRDTPureOpFormat.parseFrom(bytes))
+      case ValueUpdatedClass =>
+        valueUpdated(ValueUpdatedFormat.parseFrom(bytes))
+      case UpdatedOpClass =>
+        updateOp(UpdateOpFormat.parseFrom(bytes))
+      case AssignOpClass =>
+        assignOp(AssignOpFormat.parseFrom(bytes))
+      case AddOpClass =>
+        addOp(AddOpFormat.parseFrom(bytes))
+      case RemoveOpClass =>
+        removeOp(RemoveOpFormat.parseFrom(bytes))
+      case _ =>
+        throw new IllegalArgumentException(s"can't deserialize object of type ${clazz}")
+    }
+  }
+
+  private def updateOp(opFormat: UpdateOpFormat): UpdateOp =
+    UpdateOp(payloadSerializer.payload(opFormat.getDelta))
+
+  private def crdt(crdtFormat: CRDTPureOpFormat): CRDT[_] =
+    CRDT(polog(crdtFormat.getPolog), deserializeState(crdtFormat.getState))
+
+  def serializeState(state: Any): ByteString = {
+    val stream = new ByteArrayOutputStream()
+    val oos = new ObjectOutputStream(stream)
+    oos.writeObject(state)
+    oos.close()
+    ByteString.copyFrom(stream.toByteArray)
+  }
+
+  def deserializeState(state: ByteString): Any = {
+    val ois = new ObjectInputStream(new ByteArrayInputStream(state.toByteArray))
+    val deserialized = ois.readObject
+    ois.close
+    deserialized
+  }
+
+  private def pologBuilder(polog: POLog): POLogFormat.Builder = {
+    val builder = POLogFormat.newBuilder
+
+    polog.log.foreach { ve =>
+      builder.addVersionedEntries(commonSerializer.versionedFormatBuilder(ve))
+    }
+
+    builder
+  }
+
+  private def polog(pologFormat: POLogFormat): POLog = {
+    val rs = pologFormat.getVersionedEntriesList.iterator.asScala.foldLeft(Set.empty[Versioned[Any]]) {
+      case (acc, r) => acc + commonSerializer.versioned(r)
+    }
+
+    POLog(rs)
+  }
+
+  private def valueUpdated(valueUpdatedFormat: ValueUpdatedFormat): ValueUpdated =
+    ValueUpdated(payloadSerializer.payload(valueUpdatedFormat.getOperation))
+
+  private def addOp(opFormat: AddOpFormat): AddOp =
+    AddOp(payloadSerializer.payload(opFormat.getEntry))
+
+  // TODO remove timestamps if no longer needed
+  private def removeOp(opFormat: RemoveOpFormat): RemoveOp = {
+    val timestamps = opFormat.getTimestampsList.iterator().asScala.foldLeft(Set.empty[VectorTime]) {
+      case (result, timestampFormat) => result + commonSerializer.vectorTime(timestampFormat)
+    }
+
+    RemoveOp(payloadSerializer.payload(opFormat.getEntry), timestamps)
+  }
+
+  private def crdtFormatBuilder(c: CRDT[_]): CRDTPureOpFormat.Builder = {
+    CRDTPureOpFormat.newBuilder.setPolog(pologBuilder(c.polog)).setState(serializeState(c.state))
+  }
+
+  private def valueUpdatedFormat(valueUpdated: ValueUpdated): ValueUpdatedFormat.Builder =
+    ValueUpdatedFormat.newBuilder.setOperation(payloadSerializer.payloadFormatBuilder(valueUpdated.operation.asInstanceOf[AnyRef]))
+
+  private def updateOpFormatBuilder(op: UpdateOp): UpdateOpFormat.Builder =
+    UpdateOpFormat.newBuilder.setDelta(payloadSerializer.payloadFormatBuilder(op.delta.asInstanceOf[AnyRef]))
+
+  private def addOpFormatBuilder(op: AddOp): AddOpFormat.Builder =
+    AddOpFormat.newBuilder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
+
+  // TODO remove timestamps if no longer needed
+  private def removeOpFormatBuilder(op: RemoveOp): RemoveOpFormat.Builder = {
+    val builder = RemoveOpFormat.newBuilder
+
+    builder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
+
+    op.timestamps.foreach { timestamp =>
+      builder.addTimestamps(commonSerializer.vectorTimeFormatBuilder(timestamp))
+    }
+
+    builder
+  }
+
+  private def assignOp(opFormat: AssignOpFormat): AssignOp =
+    AssignOp(payloadSerializer.payload(opFormat.getValue))
+
+  private def assignOpFormatBuilder(op: AssignOp): AssignOpFormat.Builder =
+    AssignOpFormat.newBuilder.setValue(payloadSerializer.payloadFormatBuilder(op.value.asInstanceOf[AnyRef]))
+
+}
+/*
+class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
+  val commonSerializer = new CommonSerializer(system)
+
+  import commonSerializer.payloadSerializer
+
   private val MVRegisterClass = classOf[MVRegister[_]]
   private val LWWRegisterClass = classOf[LWWRegister[_]]
   /*
@@ -281,3 +422,4 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
     deserialized
   }
 }
+*/
