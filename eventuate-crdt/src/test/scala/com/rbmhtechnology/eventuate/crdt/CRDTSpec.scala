@@ -22,10 +22,10 @@ import org.scalatest._
 
 class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   val counter = Counter.apply[Int]
-  val orSet = ORSet.apply[Int]
-  val mvReg = MVRegister.apply[Int]
-  val lwwReg = LWWRegister.apply[Int]
-  val orShoppingCart = ORCart.apply[String]
+  val orSet = ORSet.apply
+  val mvReg = MVRegister.apply
+  val lwwReg = LWWRegister.apply
+  val orShoppingCart = ORCart.apply
   val tpSet = TPSet.apply[Int]
 
   def vt(t1: Long, t2: Long): VectorTime =
@@ -34,30 +34,30 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   "A Counter" must {
     import Counter._
     "have a default value 0" in {
-      counter.eval shouldBe 0
+      counter.value shouldBe 0
     }
     "return value of single operation" in {
       counter
         .update(5, vt(1, 0))
-        .eval shouldBe 5
+        .value shouldBe 5
     }
     "return sum of operations" in {
       counter
         .update(6, vt(1, 0))
         .update(6, vt(2, 0))
-        .eval shouldBe 12
+        .value shouldBe 12
     }
     "return sum of concurrent operations" in {
       counter
         .update(6, vt(1, 0))
         .update(3, vt(0, 1))
-        .eval shouldBe 9
+        .value shouldBe 9
     }
     "return the sum of positive and negative operations" in {
       counter
         .update(2, vt(1, 0))
         .update(-4, vt(2, 1))
-        .eval shouldBe -2
+        .value shouldBe -2
     }
   }
   "An ORSet" must {
@@ -68,7 +68,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
     "add an entry" in {
       orSet
         .add(1, vt(1, 0))
-        .eval should be(Set(1))
+        .value should be(Set(1))
     }
     "mask sequential duplicates" in {
       orSet
@@ -237,54 +237,54 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   "A TPSet" must {
     import TPSet._
     "be empty by default" in {
-      tpSet.eval shouldBe Set.empty
+      tpSet.value shouldBe Set.empty
     }
     "add an entry" in {
       tpSet
         .add(1, vt(1, 0))
-        .eval should be(Set(1))
+        .value should be(Set(1))
     }
     "mask sequential duplicates" in {
       tpSet
         .add(1, vt(1, 0))
         .add(1, vt(2, 0))
-        .eval should be(Set(1))
+        .value should be(Set(1))
     }
     "mask concurrent duplicates" in {
       tpSet
         .add(1, vt(1, 0))
         .add(1, vt(0, 1))
-        .eval should be(Set(1))
+        .value should be(Set(1))
     }
     "remove a pair" in {
       tpSet
         .add(1, vt(1, 0))
         .remove(1, vt(2, 0))
-        .eval should be(Set())
+        .value should be(Set())
     }
     "don't add an element that was removed" in {
       tpSet
         .add(1, vt(1, 0))
         .remove(1, vt(0, 1))
         .add(1, vt(2, 1))
-        .eval should be(Set())
+        .value should be(Set())
     }
     "commute" in {
       tpSet
         .add(1, vt(1, 0))
         .remove(1, vt(0, 1))
-        .eval should be(Set())
+        .value should be(Set())
     }
     "commute2" in {
       tpSet
         .remove(1, vt(0, 1))
         .add(1, vt(1, 0))
-        .eval should be(Set())
+        .value should be(Set())
     }
     "return an empty set after a remove" in {
       tpSet
         .remove(1, vt(1, 0))
-        .eval should be(Set())
+        .value should be(Set())
     }
 
   }

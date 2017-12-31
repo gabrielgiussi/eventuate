@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.Props
 import akka.testkit.TestProbe
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTService.ValueUpdated
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.log._
@@ -71,7 +72,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
       val startCounter = new AtomicInteger()
       val stopCounter = new AtomicInteger()
 
-      override private[crdt] def onChange(crdt: CRDT[Set[String]], operation: Option[Operation]): Unit = {
+      override private[crdt] def onChange(crdt: SimpleCRDT, operation: Option[Operation]): Unit = {
         operation match {
           case Some(AddOp(entry: String)) if entry.startsWith("start") => startCounter.incrementAndGet()
           case Some(AddOp(entry: String)) if entry.startsWith("stop") => stopCounter.incrementAndGet()
@@ -84,8 +85,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
         }
 
         if (stopCounter.get == 4) {
-          val a = crdt.eval
-          probe.ref ! a.filterNot(s => s.startsWith("start") || s.startsWith("stop"))
+          probe.ref ! crdt.eval.filterNot(s => s.startsWith("start") || s.startsWith("stop"))
           stopCounter.set(0)
         }
       }

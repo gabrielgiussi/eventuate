@@ -21,6 +21,7 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Obsolete
 import org.scalatest.{ BeforeAndAfterEach, Matchers, WordSpec }
 
 class CRDTOpBasedSpec extends WordSpec with Matchers with BeforeAndAfterEach {
+  /*
 
   case object ObsoleteAll
 
@@ -42,9 +43,8 @@ class CRDTOpBasedSpec extends WordSpec with Matchers with BeforeAndAfterEach {
 
     override def zero: CRDT[String] = CRDT("initial")
 
-    override protected def mergeState(stableState: String, evaluatedState: String): String = s"stable: $stableState, evaluated: $evaluatedState"
-
     override protected def customEval(crdt: CRDT[String]): String = ???
+
   }
 
   "A Pure OP Based CRDT" ignore {
@@ -54,5 +54,5 @@ class CRDTOpBasedSpec extends WordSpec with Matchers with BeforeAndAfterEach {
     "" in {
     }
   }
-
+*/
 }

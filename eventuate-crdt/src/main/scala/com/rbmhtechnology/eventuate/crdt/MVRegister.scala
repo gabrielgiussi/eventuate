@@ -18,30 +18,28 @@ package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
 import com.rbmhtechnology.eventuate._
-import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedCRDT
+import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
+import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 import scala.concurrent.Future
 
 object MVRegister {
 
-  implicit class MVRegisterCRDT[A](crdt: CRDT[Set[A]]) {
-    def assign(value: A, vectorTime: VectorTime, timestamp: Long = 0L, creator: String = "")(implicit ops: CRDTNonCommutativePureOp[Set[A]]) = ops.effect(crdt, AssignOp(value), vectorTime, timestamp, creator)
+  implicit class MVRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
+    def assign(value: A, vectorTime: VectorTime, timestamp: Long = 0L, creator: String = "")(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AssignOp(value), vectorTime, timestamp, creator)
   }
 
-  def apply[A]: CRDT[Set[A]] = CRDT(Set.empty[A])
+  def apply(): SimpleCRDT = MVRegisterServiceOps.zero
 
-  implicit def MVRegisterServiceOps[A] = new CRDTNonCommutativePureOp[Set[A]] {
+  implicit def MVRegisterServiceOps[A] = new CRDTNonCommutativePureOpSimple[Set[A]] {
 
     override def precondition: Boolean = false
 
-    override def customEval(crdt: CRDT[Set[A]]): Set[A] = crdt.polog.log.map(_.value.asInstanceOf[AssignOp].value).asInstanceOf[Set[A]]
+    override protected def customEval(ops: Seq[Versioned[Operation]]): Set[A] = ops.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A]).toSet
 
     override implicit def obs: Obsolete = (op1, op2) => op1.vectorTimestamp < op2.vectorTimestamp
 
-    override def zero: CRDT[Set[A]] = MVRegister.apply[A]
-
-    override protected def mergeState(stableState: Set[A], evaluatedState: Set[A]): Set[A] = stableState ++ evaluatedState
   }
 
 }
@@ -53,8 +51,8 @@ object MVRegister {
  * @param log Event log.
  * @tparam A [[MVRegister]] value type.
  */
-class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[CRDT[Set[A]], Set[A]])
-  extends CRDTService[CRDT[Set[A]], Set[A]] {
+class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOpSimple[Set[A]])
+  extends CRDTService[SimpleCRDT, Set[A]] {
 
   /**
    * Assigns a `value` to the MV-Register identified by `id` and returns the updated MV-Register value.

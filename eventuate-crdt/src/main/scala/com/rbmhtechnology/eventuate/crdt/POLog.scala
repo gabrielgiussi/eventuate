@@ -24,16 +24,9 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
 
   // TODO implict OBS
 
-  // puedo asegurar que esta el timestamp y remover el Option?
-  // TODO me conviene devolver Versioned[Operation]?
-  def op(timestamp: VectorTime): Option[Operation] = log find ((x) => x.vectorTimestamp equiv timestamp) match {
-    case Some(Versioned(op, _, _, _)) => Some(op)
-    case None                         => None
-  }
-
   // deberia llamarse desde ops#stable. Alguna manera de restringirlo?
   //p \ {(t,p(t))}
-  def remove(a: Versioned[Operation]): POLog = copy(log - a)
+  //def remove(a: Versioned[Operation]): POLog = copy(log - a)
 
   // estos dos deberian llamarse desde ops#effect
   // puedo poner implicit en obs?
@@ -58,7 +51,15 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
     // TODO this check should only be for testing.
     if ((log.isEmpty) || (log.forall { !obs(op, _) })) copy(log + op) // TODO review if this is ok (forall o exists?)
     else this
+  }
 
+  // TODO Stable can be in VectorTimestamp?
+  def stable(stable: VectorTime): (POLog, Seq[Operation]) = {
+    val (stableOps, nonStableOps) = log.foldLeft((Seq.empty[Operation], Seq.empty[Versioned[Operation]])) {
+      case ((stableOps, nonStableOps), op) if (op.vectorTimestamp <= stable) => (stableOps :+ op.value, nonStableOps)
+      case ((stableOps, nonStableOps), op)                                   => (stableOps, nonStableOps :+ op)
+    }
+    (copy(log = nonStableOps.toSet), stableOps)
   }
 
 }

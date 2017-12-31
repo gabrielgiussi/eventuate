@@ -21,6 +21,7 @@ import java.util.concurrent.CompletionStage
 import java.util.{ Map => JMap }
 
 import akka.actor.{ ActorRef, ActorSystem }
+import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt._
 
 import scala.collection.JavaConverters._
@@ -39,7 +40,7 @@ import scala.collection.JavaConverters._
  * @tparam A [[ORCart]] key type.
  */
 class ORCartService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
-  extends CRDTService[CRDT[Map[A, Int]], Map[A, Int], JMap[A, JInt]] {
+  extends CRDTService[SimpleCRDT, Map[A, Int], JMap[A, JInt]] {
 
   import CRDTConverter._
   import system._

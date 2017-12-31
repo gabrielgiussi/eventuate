@@ -21,6 +21,7 @@ import akka.remote.testkit._
 import akka.remote.transport.ThrottlerTransportAdapter.Direction
 import akka.testkit.TestProbe
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.typesafe.config.ConfigFactory
 
@@ -59,7 +60,7 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
       runOn(nodeA) {
         val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
         val service = new ORSetService[Int]("A", endpoint.log)(system, ORSet.ORSetServiceOps) { // FIXME i don't need to pass the ops before
-          override private[crdt] def onChange(crdt: CRDT[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
+          override private[crdt] def onChange(crdt: SimpleCRDT, operation: Option[Operation]): Unit = probe.ref ! crdt.value
         }
 
         service.add("x", 1)
@@ -85,7 +86,7 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
       runOn(nodeB) {
         val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
         val service = new ORSetService[Int]("B", endpoint.log)(system, ORSet.ORSetServiceOps) {
-          override private[crdt] def onChange(crdt: CRDT[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
+          override private[crdt] def onChange(crdt: SimpleCRDT, operation: Option[Operation]): Unit = probe.ref ! crdt.value
         }
 
         service.value("x")

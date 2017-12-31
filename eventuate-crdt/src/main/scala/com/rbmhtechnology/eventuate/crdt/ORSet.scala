@@ -18,17 +18,20 @@ package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedCRDT
+import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
+import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 import scala.concurrent.Future
 import scala.collection.immutable.Set
 
 object ORSet {
-  def apply[A]: CRDT[Set[A]] = CRDT(Set.empty[A])
+  def apply(): SimpleCRDT = ORSetServiceOps.zero
 
-  implicit class ORSetCRDT[A](crdt: CRDT[Set[A]]) {
-    def add(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOp[Set[A]]) = ops.effect(crdt, AddOp(value), vectorTime)
-    def remove(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOp[Set[A]]) = ops.effect(crdt, RemoveOp(value), vectorTime)
+  implicit class ORSetCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
+    def add(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AddOp(value), vectorTime)
+    def remove(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, RemoveOp(value), vectorTime)
   }
 
   /**
@@ -40,14 +43,14 @@ object ORSet {
    * @param s
    * @param op
    * @tparam A
-   * @return
+   * @return(
    */
   def merge[A](s: Set[A], op: Versioned[Operation]) = op.value match {
     case AddOp(e)       => s + e.asInstanceOf
     case RemoveOp(e, _) => s - e.asInstanceOf // FIXME it will be removeop in the set?
   }
 
-  implicit def ORSetServiceOps[A] = new CRDTNonCommutativePureOp[Set[A]] {
+  implicit def ORSetServiceOps[A] = new CRDTNonCommutativePureOpSimple[Set[A]] {
 
     override val obs: Obsolete = (op1, op2) => {
       ((op1.vectorTimestamp, op1.value), (op2.vectorTimestamp, op2.value)) match {
@@ -57,13 +60,9 @@ object ORSet {
       }
     }
 
-    override def zero: CRDT[Set[A]] = ORSet.apply[A]
+    override def customEval(ops: Seq[Versioned[Operation]]): Set[A] =
+      ops.filter(_.value.isInstanceOf[AddOp]).map(_.value.asInstanceOf[AddOp].entry.asInstanceOf[A]).toSet
 
-    override def customEval(crdt: CRDT[Set[A]]): Set[A] =
-      crdt.polog.log.filter(_.value.isInstanceOf[AddOp]).map(_.value.asInstanceOf[AddOp].entry.asInstanceOf[A])
-
-    // TODO this is wrong
-    override protected def mergeState(stableState: Set[A], evaluatedState: Set[A]): Set[A] = stableState ++ evaluatedState
   }
 }
 
@@ -75,8 +74,8 @@ object ORSet {
  * @param log Event log.
  * @tparam A [[ORSet]] entry type.
  */
-class ORSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOp[Set[A]]) //CRDTServiceOps[CRDT[Set[A]], Set[A]])
-  extends CRDTService[CRDT[Set[A]], Set[A]] {
+class ORSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOpSimple[Set[A]])
+  extends CRDTService[SimpleCRDT, Set[A]] {
 
   /**
    * Adds `entry` to the OR-Set identified by `id` and returns the updated entry set.

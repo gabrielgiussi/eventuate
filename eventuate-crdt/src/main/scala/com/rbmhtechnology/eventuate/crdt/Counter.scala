@@ -17,6 +17,7 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
+import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedCRDT
 import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
@@ -24,9 +25,7 @@ import scala.concurrent.Future
 
 object Counter {
 
-  implicit class CounterCRDT[A: Integral](crdt: A) {
-
-    def eval()(implicit ops: CRDTServiceOps[A, A]) = ops.eval(crdt)
+  implicit class CounterCRDT[A: Integral](crdt: A) extends EnhancedCRDT(crdt) {
 
     def update(delta: A, vt: VectorTime)(implicit ops: CRDTServiceOps[A, A]) = ops.effect(crdt, UpdateOp(delta), vt)
 
@@ -47,13 +46,6 @@ object Counter {
 
     override def zero: A = Counter.apply[A]
 
-    /*
-    override val obs: Obsolete = (_, _) => false
-
-    override val pruneState = (op: Operation, state: A, obs: Obsolete) => state
-
-    override val updateState = (state: A, op: Versioned[Operation]) => merge(state, op)
-*/
     override def precondition: Boolean =
       false
 

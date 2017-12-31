@@ -20,6 +20,7 @@ import java.util.concurrent.CompletionStage
 import java.util.{ Optional => JOption }
 
 import akka.actor.{ ActorRef, ActorSystem }
+import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.{ CRDT, LWWRegister }
 
 import scala.compat.java8.OptionConverters._
@@ -33,7 +34,7 @@ import scala.compat.java8.OptionConverters._
  * @tparam A [[LWWRegister]] value type.
  */
 class LWWRegisterService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
-  extends CRDTService[CRDT[Option[A]], Option[A], JOption[A]] {
+  extends CRDTService[SimpleCRDT, Option[A], JOption[A]] {
 
   import CRDTConverter._
   import system._

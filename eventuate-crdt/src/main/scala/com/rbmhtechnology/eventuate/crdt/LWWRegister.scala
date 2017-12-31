@@ -19,16 +19,18 @@ package com.rbmhtechnology.eventuate.crdt
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
+import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 import scala.concurrent.Future
 
 object LWWRegister {
 
-  def apply[A]: CRDT[Option[A]] = CRDT(None)
+  def apply(): SimpleCRDT = LWWRegisterServiceOps.zero
 
-  implicit class LWWRegisterCRDT[A](crdt: CRDT[Option[A]]) {
-    def assign(value: A, vectorTime: VectorTime, timestamp: Long, creator: String)(implicit ops: CRDTNonCommutativePureOp[Option[A]]) = ops.effect(crdt, AssignOp(value), vectorTime, timestamp, creator)
+  implicit class LWWRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
+    def assign(value: A, vectorTime: VectorTime, timestamp: Long, creator: String)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AssignOp(value), vectorTime, timestamp, creator)
   }
 
   implicit def LWWOrdering[A] = new Ordering[Versioned[_]] {
@@ -39,7 +41,7 @@ object LWWRegister {
         x.systemTimestamp.compareTo(y.systemTimestamp)
   }
 
-  implicit def LWWRegisterServiceOps[A] = new CRDTNonCommutativePureOp[Option[A]] {
+  implicit def LWWRegisterServiceOps[A] = new CRDTNonCommutativePureOpSimple[Option[A]] {
 
     override def precondition: Boolean =
       false
@@ -49,13 +51,8 @@ object LWWRegister {
       else op1.vectorTimestamp < op2.vectorTimestamp
     }
 
-    override def zero: CRDT[Option[A]] = LWWRegister.apply[A]
+    override def customEval(ops: Seq[Versioned[Operation]]): Option[A] = ops.headOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A])
 
-    override def customEval(crdt: CRDT[Option[A]]): Option[A] = crdt.polog.log.headOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A])
-
-    override protected def mergeState(stableState: Option[A], evaluatedState: Option[A]): Option[A] = // TODO
-      if (stableState.isEmpty) evaluatedState
-      else stableState
   }
 
 }
@@ -67,8 +64,8 @@ object LWWRegister {
  * @param log Event log.
  * @tparam A [[LWWRegister]] value type.
  */
-class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[CRDT[Option[A]], Option[A]])
-  extends CRDTService[CRDT[Option[A]], Option[A]] {
+class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOpSimple[Option[A]])
+  extends CRDTService[SimpleCRDT, Option[A]] {
 
   /**
    * Assigns a `value` to the LWW-Register identified by `id` and returns the updated LWW-Register value.

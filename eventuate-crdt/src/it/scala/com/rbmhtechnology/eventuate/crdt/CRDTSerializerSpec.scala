@@ -33,12 +33,12 @@ object CRDTSerializerSpec {
 
   def orSet(payload: ExamplePayload) = {
     import ORSet._
-    ORSet[ExamplePayload].add(payload, VectorTime("s" -> 17L))
+    ORSet().add(payload, VectorTime("s" -> 17L))
   }
 
   def orCart(key: ExamplePayload) = {
     import ORCart._
-    ORCart[ExamplePayload].add(key, 3, VectorTime("s" -> 17L))
+    ORCart().add(key, 3, VectorTime("s" -> 17L))
   }
 
   def orCartEntry(key: ExamplePayload) =
@@ -46,12 +46,12 @@ object CRDTSerializerSpec {
 
   def mvRegister(payload: ExamplePayload) = {
     import MVRegister._
-    MVRegister[ExamplePayload].assign(payload, VectorTime("s" -> 18L), 18, "e1")
+    MVRegister().assign(payload, VectorTime("s" -> 18L), 18, "e1")
   }
 
   def lwwRegister(payload: ExamplePayload) = {
     import LWWRegister._
-    LWWRegister[ExamplePayload].assign(payload, VectorTime("s" -> 19L), 19, "e2")
+    LWWRegister().assign(payload, VectorTime("s" -> 19L), 19, "e2")
   }
 
   def removeOp(payload: ExamplePayload): RemoveOp =

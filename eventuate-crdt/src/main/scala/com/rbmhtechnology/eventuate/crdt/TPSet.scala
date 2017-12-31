@@ -19,6 +19,7 @@ package com.rbmhtechnology.eventuate.crdt
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import com.rbmhtechnology.eventuate.VectorTime
+import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.crdt.TPSet.TPSet
 
@@ -31,10 +32,9 @@ object TPSet {
 
   def apply[A]: TPSet[A] = (Set.empty[A], Set.empty[A])
 
-  implicit class TPSetCRDT[A](crdt: TPSet[A]) {
+  implicit class TPSetCRDT[A](crdt: TPSet[A]) extends EnhancedCRDT(crdt) {
 
     // TODO can reuse the one of Counter or even use only one for CRDTNonCommutatives to?
-    def eval()(implicit ops: CRDTServiceOps[TPSet[A], Set[A]]) = ops.eval(crdt)
 
     def add(entry: A, t: VectorTime)(implicit ops: CRDTServiceOps[TPSet[A], Set[A]]) = ops.effect(crdt, AddOp(entry), t)
 
