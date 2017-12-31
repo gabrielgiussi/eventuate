@@ -45,7 +45,7 @@ object ReplicatedORSetConfig extends MultiNodeReplicationConfig {
 
 abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) with MultiNodeWordSpec with MultiNodeReplicationEndpoint {
   import ReplicatedORSetConfig._
-  import ORSet._ // TODO why this wasn't needed before?
+  //import ORSet._ // TODO why this wasn't needed before?
 
   def initialParticipants: Int =
     roles.size
@@ -58,9 +58,8 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
 
       runOn(nodeA) {
         val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
-        val service = new ORSetService[Int]("A", endpoint.log) {
+        val service = new ORSetService[Int]("A", endpoint.log)(system, ORSet.ORSetServiceOps) { // FIXME i don't need to pass the ops before
           override private[crdt] def onChange(crdt: CRDT[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
-
         }
 
         service.add("x", 1)
@@ -85,7 +84,7 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
 
       runOn(nodeB) {
         val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
-        val service = new ORSetService[Int]("B", endpoint.log) {
+        val service = new ORSetService[Int]("B", endpoint.log)(system, ORSet.ORSetServiceOps) {
           override private[crdt] def onChange(crdt: CRDT[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
         }
 

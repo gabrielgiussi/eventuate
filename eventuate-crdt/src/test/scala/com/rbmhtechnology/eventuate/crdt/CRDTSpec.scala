@@ -26,13 +26,13 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   val mvReg = MVRegister.apply[Int]
   val lwwReg = LWWRegister.apply[Int]
   val orShoppingCart = ORCart.apply[String]
+  val tpSet = TPSet.apply[Int]
 
   def vt(t1: Long, t2: Long): VectorTime =
     VectorTime("p1" -> t1, "p2" -> t2)
 
   "A Counter" must {
     import Counter._
-    import CRDTCommutativePureOp._
     "have a default value 0" in {
       counter.eval shouldBe 0
     }
@@ -91,8 +91,8 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
     "keep an entry if not all pairs are removed" in {
       orSet
         .add(1, vt(1, 0))
-        .add(1, vt(2, 0))
-        .remove(1, vt(1, 0))
+        .add(1, vt(0, 1))
+        .remove(1, vt(2, 0))
         .value should be(Set(1))
     }
     "add an entry if concurrent to remove" in {
@@ -232,6 +232,61 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .remove("a", vt(1, 1))
         .value should be(Map("a" -> 2))
     }
+  }
+
+  "A TPSet" must {
+    import TPSet._
+    "be empty by default" in {
+      tpSet.eval shouldBe Set.empty
+    }
+    "add an entry" in {
+      tpSet
+        .add(1, vt(1, 0))
+        .eval should be(Set(1))
+    }
+    "mask sequential duplicates" in {
+      tpSet
+        .add(1, vt(1, 0))
+        .add(1, vt(2, 0))
+        .eval should be(Set(1))
+    }
+    "mask concurrent duplicates" in {
+      tpSet
+        .add(1, vt(1, 0))
+        .add(1, vt(0, 1))
+        .eval should be(Set(1))
+    }
+    "remove a pair" in {
+      tpSet
+        .add(1, vt(1, 0))
+        .remove(1, vt(2, 0))
+        .eval should be(Set())
+    }
+    "don't add an element that was removed" in {
+      tpSet
+        .add(1, vt(1, 0))
+        .remove(1, vt(0, 1))
+        .add(1, vt(2, 1))
+        .eval should be(Set())
+    }
+    "commute" in {
+      tpSet
+        .add(1, vt(1, 0))
+        .remove(1, vt(0, 1))
+        .eval should be(Set())
+    }
+    "commute2" in {
+      tpSet
+        .remove(1, vt(0, 1))
+        .add(1, vt(1, 0))
+        .eval should be(Set())
+    }
+    "return an empty set after a remove" in {
+      tpSet
+        .remove(1, vt(1, 0))
+        .eval should be(Set())
+    }
+
   }
 
 }

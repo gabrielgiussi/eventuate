@@ -55,6 +55,7 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
    */
   def add(op: Versioned[Operation], obs: Obsolete): POLog = {
     //if ((log.isEmpty) || (log.exists { !obs(op, _) })) copy(log + op)
+    // TODO this check should only be for testing.
     if ((log.isEmpty) || (log.forall { !obs(op, _) })) copy(log + op) // TODO review if this is ok (forall o exists?)
     else this
 

@@ -24,11 +24,10 @@ import com.rbmhtechnology.eventuate.utilities._
 import org.scalatest._
 
 class CRDTRecoverySpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecLike with Matchers with SingleLocationSpecLeveldb {
-  import ORSet._
 
   var probe: TestProbe = _
 
-  def service(serviceId: String) = new ORSetService[Int](serviceId, log) {
+  def service(serviceId: String) = new ORSetService[Int](serviceId, log)(system, ORSet.ORSetServiceOps) { // FIXME not needed before
     override def onChange(crdt: CRDT[Set[Int]], operation: Option[Operation]): Unit = probe.ref ! crdt.value
   }
 

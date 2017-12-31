@@ -28,6 +28,11 @@ message CRDTPureOpFormat {
   optional bytes state = 2;
 }
 
+message ORCartEntryFormat {
+  optional PayloadFormat key = 1;
+  optional int32 quantity = 2;
+}
+
 message ValueUpdatedFormat {
   optional PayloadFormat operation = 1;
 }

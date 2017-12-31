@@ -15,6 +15,7 @@
  */
 
 package com.rbmhtechnology.eventuate.crdt
+
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -30,6 +31,7 @@ import org.scalatest._
 
 import scala.collection.immutable.Seq
 import scala.concurrent.{ ExecutionContext, Future }
+
 object CRDTChaosSpecLeveldb {
   val crdtId = "1"
 
@@ -43,6 +45,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
 
   class TestEventLog(id: String) extends LeveldbEventLog(id, "log-test") {
     override def write(events: Seq[DurableEvent], partition: Long, clock: EventLogClock): Unit =
+      // randomNr is making the test fail in some ocasions if the batch that writes the stop contains the randomNr
       if (events.map(_.payload).contains(ValueUpdated(AddOp(randomNr())))) throw IntegrationTestException else super.write(events, partition, clock)
   }
 
@@ -62,10 +65,9 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
 
   def service(endpoint: ReplicationEndpoint): (ORSetService[String], TestProbe) = {
     implicit val system = endpoint.system
-    import ORSet._
 
     val probe = TestProbe()
-    val service = new ORSetService[String](endpoint.id, endpoint.logs("L1")) {
+    val service = new ORSetService[String](endpoint.id, endpoint.logs("L1"))(system, ORSet.ORSetServiceOps) {
       val startCounter = new AtomicInteger()
       val stopCounter = new AtomicInteger()
 
@@ -82,7 +84,8 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
         }
 
         if (stopCounter.get == 4) {
-          probe.ref ! ops.eval(crdt).filterNot(s => s.startsWith("start") || s.startsWith("stop"))
+          val a = crdt.eval
+          probe.ref ! a.filterNot(s => s.startsWith("start") || s.startsWith("stop"))
           stopCounter.set(0)
         }
       }
@@ -93,7 +96,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
 
   "A replicated ORSet" must {
     "converge under concurrent updates and write failures" in {
-      val numUpdates = 10
+      val numUpdates = 100
 
       val locationA = location("A", customConfig = customConfig)
       val locationB = location("B", customConfig = customConfig)

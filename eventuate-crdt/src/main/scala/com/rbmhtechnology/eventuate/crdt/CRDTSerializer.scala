@@ -39,6 +39,7 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private val AssignOpClass = classOf[AssignOp]
   private val AddOpClass = classOf[AddOp]
   private val RemoveOpClass = classOf[RemoveOp]
+  private val ORCartEntryClass = classOf[ORCartEntry[_]]
 
   override def identifier: Int = 22567
 
@@ -57,6 +58,8 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
       removeOpFormatBuilder(o).build().toByteArray
     case o: AssignOp =>
       assignOpFormatBuilder(o).build().toByteArray
+    case e: ORCartEntry[_] =>
+      orCartEntryFormatBuilder(e).build().toByteArray
     case _ =>
       throw new IllegalArgumentException(s"can't serialize object of type ${o.getClass}")
   }
@@ -76,6 +79,8 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
         addOp(AddOpFormat.parseFrom(bytes))
       case RemoveOpClass =>
         removeOp(RemoveOpFormat.parseFrom(bytes))
+      case ORCartEntryClass =>
+        orCartEntry(ORCartEntryFormat.parseFrom(bytes))
       case _ =>
         throw new IllegalArgumentException(s"can't deserialize object of type ${clazz}")
     }
@@ -166,6 +171,17 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
 
   private def assignOpFormatBuilder(op: AssignOp): AssignOpFormat.Builder =
     AssignOpFormat.newBuilder.setValue(payloadSerializer.payloadFormatBuilder(op.value.asInstanceOf[AnyRef]))
+
+  private def orCartEntryFormatBuilder(orCartEntry: ORCartEntry[_]): ORCartEntryFormat.Builder = {
+    val builder = ORCartEntryFormat.newBuilder
+
+    builder.setKey(payloadSerializer.payloadFormatBuilder(orCartEntry.key.asInstanceOf[AnyRef]))
+    builder.setQuantity(orCartEntry.quantity)
+    builder
+  }
+
+  private def orCartEntry(orCartEntryFormat: ORCartEntryFormat): ORCartEntry[Any] =
+    ORCartEntry(payloadSerializer.payload(orCartEntryFormat.getKey), orCartEntryFormat.getQuantity)
 
 }
 /*

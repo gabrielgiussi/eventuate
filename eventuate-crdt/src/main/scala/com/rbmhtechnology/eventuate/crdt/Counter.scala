@@ -26,7 +26,9 @@ object Counter {
 
   implicit class CounterCRDT[A: Integral](crdt: A) {
 
-    def update(delta: A, vt: VectorTime)(implicit ops: CRDTCommutativePureOp[A]) = ops.effect(crdt, UpdateOp(delta), vt)
+    def eval()(implicit ops: CRDTServiceOps[A, A]) = ops.eval(crdt)
+
+    def update(delta: A, vt: VectorTime)(implicit ops: CRDTServiceOps[A, A]) = ops.effect(crdt, UpdateOp(delta), vt)
 
   }
 
@@ -41,8 +43,7 @@ object Counter {
    * }
    */
   //implicit def CounterServiceOps[A: Integral] = new CRDTServiceOps[Counter[A], A] {
-  // TODO
-  implicit def CounterServiceOps[A: Integral] = new CRDTCommutativePureOp[A] {
+  implicit def CounterServiceOps[A: Integral] = new CRDTServiceOps[A, A] {
 
     override def zero: A = Counter.apply[A]
 
@@ -56,7 +57,10 @@ object Counter {
     override def precondition: Boolean =
       false
 
-    override def effect(crdt: A, op: Operation): A = implicitly[Integral[A]].plus(crdt, op.asInstanceOf[UpdateOp].delta.asInstanceOf[A])
+    override def eval(crdt: A): A = crdt
+
+    override def effect(crdt: A, op: Operation, vt: VectorTime, systemTimestamp: Long, creator: String): A = implicitly[Integral[A]].plus(crdt, op.asInstanceOf[UpdateOp].delta.asInstanceOf[A])
+
   }
 }
 

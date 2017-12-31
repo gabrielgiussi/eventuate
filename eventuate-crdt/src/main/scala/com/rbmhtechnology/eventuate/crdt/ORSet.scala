@@ -62,6 +62,7 @@ object ORSet {
     override def customEval(crdt: CRDT[Set[A]]): Set[A] =
       crdt.polog.log.filter(_.value.isInstanceOf[AddOp]).map(_.value.asInstanceOf[AddOp].entry.asInstanceOf[A])
 
+    // TODO this is wrong
     override protected def mergeState(stableState: Set[A], evaluatedState: Set[A]): Set[A] = stableState ++ evaluatedState
   }
 }
@@ -74,7 +75,7 @@ object ORSet {
  * @param log Event log.
  * @tparam A [[ORSet]] entry type.
  */
-class ORSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[CRDT[Set[A]], Set[A]])
+class ORSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOp[Set[A]]) //CRDTServiceOps[CRDT[Set[A]], Set[A]])
   extends CRDTService[CRDT[Set[A]], Set[A]] {
 
   /**

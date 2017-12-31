@@ -20,10 +20,10 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 object CRDT {
 
-  implicit class EnhancedCRDT[A](crdt: CRDT[A]) {
-    def eval(implicit ops: CRDTNonCommutativePureOp[A]) = ops.eval(crdt)
+  implicit class EnhancedCRDT[A](crdt: A) {
+    def eval[B](implicit ops: CRDTServiceOps[A, B]): B = ops.eval(crdt)
 
-    def value(implicit ops: CRDTNonCommutativePureOp[A]) = eval(ops)
+    def value[B](implicit ops: CRDTServiceOps[A, B]): B = eval(ops)
   }
 
   def apply[A](state: A): CRDT[A] = CRDT(POLog(), state)
@@ -40,6 +40,7 @@ case class CRDT[B](polog: POLog, state: B) extends CRDTFormat {
   }
 }
 
+/*
 object CRDTCommutativePureOp {
 
   implicit class EnhancedCRDT[A](crdt: A) {
@@ -48,15 +49,7 @@ object CRDTCommutativePureOp {
     def value(implicit ops: CRDTCommutativePureOp[A]) = eval(ops)
   }
 }
-
-trait CRDTCommutativePureOp[B] extends CRDTServiceOps[B, B] {
-
-  override def eval(crdt: B): B = crdt
-
-  def effect(crdt: B, op: Operation): B
-
-  final override def effect(crdt: B, op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): B = effect(crdt, op)
-}
+*/
 
 trait CRDTNonCommutativePureOp[B] extends CRDTServiceOps[CRDT[B], B] {
 
