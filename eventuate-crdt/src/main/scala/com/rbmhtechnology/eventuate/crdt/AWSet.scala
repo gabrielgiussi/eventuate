@@ -21,60 +21,55 @@ import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.R
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.R_
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 import scala.concurrent.Future
 import scala.collection.immutable.Set
 
-object ORSet {
-  def apply(): SimpleCRDT = ORSetServiceOps.zero
+object AWSet {
+  def apply(): SimpleCRDT = AWSetServiceOps.zero
 
   implicit class ORSetCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
     def add(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AddOp(value), vectorTime)
     def remove(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, RemoveOp(value), vectorTime)
+    def clear(vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, Clear, vectorTime)
   }
 
-  /**
-   * The more interesting rule is that any rmv
-   * is made obsolete by any other timestamp-operation pair; this implies that a rmv
-   * can only exist as the single element of a PO-Log (if it was inserted into an empty
-   * PO-Log), being discarded once other operation arrives (including another rmv),
-   * and never being inserted into a non-empty PO-Log. (Page 11)
-   * @param s
-   * @param op
-   * @tparam A
-   * @return(
-   */
-  def merge[A](s: Set[A], op: Versioned[Operation]) = op.value match {
-    case AddOp(e)       => s + e.asInstanceOf
-    case RemoveOp(e, _) => s - e.asInstanceOf // FIXME it will be removeop in the set?
-  }
+  implicit def AWSetServiceOps[A] = new CRDTNonCommutativePureOpSimple[Set[A]] {
 
-  implicit def ORSetServiceOps[A] = new CRDTNonCommutativePureOpSimple[Set[A]] {
+    val r: R = (v, _) => v.value match {
+      case _: RemoveOp => true
+      case Clear       => true
+      case _           => false
+    }
 
-    override val obs: Obsolete = (op1, op2) => {
+    val r0: R_ = op2 => op1 => {
       ((op1.vectorTimestamp, op1.value), (op2.vectorTimestamp, op2.value)) match {
         case ((t1, AddOp(v1)), (t2, AddOp(v2)))       => (t1 < t2) && (v1 equals v2)
         case ((t1, AddOp(v1)), (t2, RemoveOp(v2, _))) => (t1 < t2) && (v1 equals v2)
-        case ((_, RemoveOp(_, _)), _)                 => true
+        case ((t1, AddOp(_)), (t2, Clear))            => (t1 < t2)
       }
     }
 
     override def customEval(ops: Seq[Versioned[Operation]]): Set[A] =
       ops.filter(_.value.isInstanceOf[AddOp]).map(_.value.asInstanceOf[AddOp].entry.asInstanceOf[A]).toSet
 
+    override implicit val causalRedundancy: CausalRedundancy = new CausalRedundancy(r, r0)
   }
 }
 
 //#or-set-service
 /**
- * Replicated [[ORSet]] CRDT service.
+ * Replicated [[AWSet]] CRDT service.
  *
  * @param serviceId Unique id of this service.
  * @param log Event log.
- * @tparam A [[ORSet]] entry type.
+ * @tparam A [[AWSet]] entry type.
  */
-class ORSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOpSimple[Set[A]])
+class AWSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOpSimple[Set[A]])
   extends CRDTService[SimpleCRDT, Set[A]] {
 
   /**
@@ -89,15 +84,20 @@ class ORSetService[A](val serviceId: String, val log: ActorRef)(implicit val sys
   def remove(id: String, entry: A): Future[Set[A]] =
     op(id, RemoveOp(entry))
 
+  def clear(id: String): Future[Set[A]] =
+    op(id, Clear) // TODO untested!
+
   start()
 }
 
 /**
- * Persistent add operation used for [[ORSet]] and [[ORCart]].
+ * Persistent add operation used for [[AWSet]] and [[AWCart]].
  */
 case class AddOp(entry: Any) extends CRDTFormat
 
 /**
- * Persistent remove operation used for [[ORSet]] and [[ORCart]].
+ * Persistent remove operation used for [[AWSet]] and [[AWCart]].
  */
 case class RemoveOp(entry: Any, timestamps: Set[VectorTime] = Set.empty) extends CRDTFormat // FIXME timestamp needed?
+
+case object Clear extends CRDTFormat

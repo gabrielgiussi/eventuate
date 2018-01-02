@@ -22,20 +22,18 @@ import org.scalatest.Matchers
 import org.scalatest.WordSpec
 
 class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
-  val orSet = ORSet()
+  val awSet = AWSet()
   val mvReg = MVRegister()
   val lwwReg = LWWRegister()
-  val orShoppingCart = ORCart()
+  val orShoppingCart = AWCart()
 
   def vt(t1: Long, t2: Long): VectorTime =
     VectorTime("p1" -> t1, "p2" -> t2)
 
-  ""
-
-  "An ORSet" should {
-    import ORSet._
+  "An AWSet" should {
+    import AWSet._
     "stabilize" in {
-      val updated = orSet
+      val updated = awSet
         .add(1, vt(1, 0))
         .stable(vt(1, 0))
       updated.value should be(Set(1))

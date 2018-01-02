@@ -20,6 +20,9 @@ import akka.actor._
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.R
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.R_
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 import scala.concurrent.Future
@@ -38,7 +41,11 @@ object MVRegister {
 
     override protected def customEval(ops: Seq[Versioned[Operation]]): Set[A] = ops.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A]).toSet
 
-    override implicit def obs: Obsolete = (op1, op2) => op1.vectorTimestamp < op2.vectorTimestamp
+    val r: R = (op, _) => op.value.isInstanceOf[Clear.type]
+
+    val r0: R_ = op1 => op2 => op2.vectorTimestamp < op1.vectorTimestamp
+
+    override implicit val causalRedundancy: CausalRedundancy = new CausalRedundancy(r, r0)
 
   }
 
@@ -60,6 +67,9 @@ class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit va
   def assign(id: String, value: A): Future[Set[A]] =
     op(id, AssignOp(value))
 
+  def clear(id: String): Future[Set[A]] =
+    op(id, Clear) // TODO untested!
+
   start()
 }
 
@@ -67,5 +77,3 @@ class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit va
  * Persistent assign operation used for [[MVRegister]] and [[LWWRegister]].
  */
 case class AssignOp(value: Any) extends CRDTFormat
-
-//case class Clear() extends CRDTFormat

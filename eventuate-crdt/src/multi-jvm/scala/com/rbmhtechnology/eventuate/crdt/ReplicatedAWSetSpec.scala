@@ -25,9 +25,9 @@ import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.typesafe.config.ConfigFactory
 
-class ReplicatedORSetSpecLeveldb extends ReplicatedORSetSpec with MultiNodeSupportLeveldb
-class ReplicatedORSetSpecLeveldbMultiJvmNode1 extends ReplicatedORSetSpecLeveldb
-class ReplicatedORSetSpecLeveldbMultiJvmNode2 extends ReplicatedORSetSpecLeveldb
+class ReplicatedAWSetSpecLeveldb extends ReplicatedAWSetSpec with MultiNodeSupportLeveldb
+class ReplicatedAWSetSpecLeveldbMultiJvmNode1 extends ReplicatedAWSetSpecLeveldb
+class ReplicatedAWSetSpecLeveldbMultiJvmNode2 extends ReplicatedAWSetSpecLeveldb
 
 object ReplicatedORSetConfig extends MultiNodeReplicationConfig {
   val nodeA = role("nodeA")
@@ -44,7 +44,7 @@ object ReplicatedORSetConfig extends MultiNodeReplicationConfig {
   setConfig(customConfig.withFallback(MultiNodeConfigLeveldb.providerConfig))
 }
 
-abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) with MultiNodeWordSpec with MultiNodeReplicationEndpoint {
+abstract class ReplicatedAWSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) with MultiNodeWordSpec with MultiNodeReplicationEndpoint {
   import ReplicatedORSetConfig._
   //import ORSet._ // TODO why this wasn't needed before?
 
@@ -59,7 +59,7 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
 
       runOn(nodeA) {
         val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
-        val service = new ORSetService[Int]("A", endpoint.log)(system, ORSet.ORSetServiceOps) { // FIXME i don't need to pass the ops before
+        val service = new AWSetService[Int]("A", endpoint.log)(system, AWSet.AWSetServiceOps) { // FIXME i don't need to pass the ops before
           override private[crdt] def onChange(crdt: SimpleCRDT, operation: Option[Operation]): Unit = probe.ref ! crdt.value
         }
 
@@ -85,7 +85,7 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
 
       runOn(nodeB) {
         val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
-        val service = new ORSetService[Int]("B", endpoint.log)(system, ORSet.ORSetServiceOps) {
+        val service = new AWSetService[Int]("B", endpoint.log)(system, AWSet.AWSetServiceOps) {
           override private[crdt] def onChange(crdt: SimpleCRDT, operation: Option[Operation]): Unit = probe.ref ! crdt.value
         }
 

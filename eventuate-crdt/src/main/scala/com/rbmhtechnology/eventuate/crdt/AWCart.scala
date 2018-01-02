@@ -20,51 +20,58 @@ import akka.actor._
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
 
 import scala.concurrent.Future
 
 /**
- * [[ORCart]] entry.
+ * [[AWCart]] entry.
  *
  * @param key      Entry key. Used to identify a product in the shopping cart.
  * @param quantity Entry quantity.
  * @tparam A Key type.
  */
-case class ORCartEntry[A](key: A, quantity: Int) extends CRDTFormat
+case class AWCartEntry[A](key: A, quantity: Int) extends CRDTFormat
 
-object ORCart {
+object AWCart {
   def apply(): SimpleCRDT = ORCartServiceOps.zero
 
   implicit class ORCartCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
 
-    def add(key: A, quantity: Int, timestamp: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AddOp(ORCartEntry(key, quantity)), timestamp)
+    def add(key: A, quantity: Int, timestamp: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AddOp(AWCartEntry(key, quantity)), timestamp)
     def remove(key: A, t: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, RemoveOp(key), t)
   }
 
   implicit def ORCartServiceOps[A] = new CRDTNonCommutativePureOpSimple[Map[A, Int]] {
 
-    override val obs: Obsolete = (op1, op2) => {
-      ((op1.vectorTimestamp, op1.value), (op2.vectorTimestamp, op2.value)) match {
-        case ((t1, AddOp(ORCartEntry(k1, _))), (t2, RemoveOp(k2, _))) => (t1 < t2) && (k1 equals k2)
-        case ((_, RemoveOp(_, _)), _) => true
-        case _ => false
-      }
-    }
-
     override def customEval(ops: Seq[Versioned[Operation]]): Map[A, Int] = ops.foldLeft(Map.empty[A, Int]) {
-      case (acc, Versioned(AddOp(ORCartEntry(key: A, quantity)), _, _, _)) => acc.get(key) match {
+      case (acc, Versioned(AddOp(AWCartEntry(key: A, quantity)), _, _, _)) => acc.get(key) match {
         case Some(c) => acc + (key -> (c + quantity))
         case None    => acc + (key -> quantity)
       }
       case (acc, Versioned(RemoveOp(_, _), _, _, _)) => acc
     }
 
+    val r: R = (v, _) => v.value match {
+      case _: RemoveOp => true
+      case Clear       => true
+      case _           => false
+    }
+
+    val r0: R_ = newOp => op => {
+      ((op.vectorTimestamp, op.value), (newOp.vectorTimestamp, newOp.value)) match {
+        case ((t1, AddOp(AWCartEntry(k1, _))), (t2, RemoveOp(k2, _))) => (t1 < t2) && (k1 equals k2)
+        case ((_, RemoveOp(_, _)), _) => true
+        case _ => false
+      }
+    }
+
+    override implicit val causalRedundancy: CausalRedundancy = new CausalRedundancy(r, r0)
   }
 }
 
 /**
- * Replicated [[ORCart]] CRDT service.
+ * Replicated [[AWCart]] CRDT service.
  *
  *  - For adding a new `key` of given `quantity` a client should call `add`.
  *  - For incrementing the `quantity` of an existing `key` a client should call `add`.
@@ -74,22 +81,25 @@ object ORCart {
  *
  * @param serviceId Unique id of this service.
  * @param log       Event log.
- * @tparam A [[ORCart]] key type.
+ * @tparam A [[AWCart]] key type.
  */
-class ORCartService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOpSimple[Map[A, Int]])
+class AWCartService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOpSimple[Map[A, Int]])
   extends CRDTService[SimpleCRDT, Map[A, Int]] {
 
   /**
    * Adds the given `quantity` of `key` to the OR-Cart identified by `id` and returns the updated OR-Cart content.
    */
   def add(id: String, key: A, quantity: Int): Future[Map[A, Int]] =
-    if (quantity > 0) op(id, AddOp(ORCartEntry(key, quantity))) else Future.failed(new IllegalArgumentException("quantity must be positive"))
+    if (quantity > 0) op(id, AddOp(AWCartEntry(key, quantity))) else Future.failed(new IllegalArgumentException("quantity must be positive"))
 
   /**
    * Removes the given `key` from the OR-Cart identified by `id` and returns the updated OR-Cart content.
    */
   def remove(id: String, key: A): Future[Map[A, Int]] =
     op(id, RemoveOp(key))
+
+  def clear(id: String): Future[Map[A, Int]] =
+    op(id, Clear) // TODO untested!
 
   start()
 }

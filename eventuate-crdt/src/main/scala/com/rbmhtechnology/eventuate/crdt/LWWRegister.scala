@@ -21,6 +21,9 @@ import akka.actor.ActorSystem
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.R
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.R_
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
 import scala.concurrent.Future
@@ -46,13 +49,16 @@ object LWWRegister {
     override def precondition: Boolean =
       false
 
-    override implicit def obs: Obsolete = (op1, op2) => {
-      if (op1.vectorTimestamp || op2.vectorTimestamp) LWWRegister.LWWOrdering[A].lt(op1, op2)
-      else op1.vectorTimestamp < op2.vectorTimestamp
-    }
-
     override def customEval(ops: Seq[Versioned[Operation]]): Option[A] = ops.headOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A])
 
+    val r: R = (op, _) => op.value.isInstanceOf[Clear.type]
+
+    val r0: R_ = newOp => op => {
+      if (op.vectorTimestamp || newOp.vectorTimestamp) LWWRegister.LWWOrdering[A].lt(op, newOp)
+      else op.vectorTimestamp < newOp.vectorTimestamp
+    }
+
+    override implicit val causalRedundancy: CausalRedundancy = new CausalRedundancy(r, r0)
   }
 
 }
@@ -72,6 +78,9 @@ class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit v
    */
   def assign(id: String, value: A): Future[Option[A]] =
     op(id, AssignOp(value))
+
+  def clear(id: String): Future[Option[A]] =
+    op(id, Clear) // TODO untested!
 
   start()
 }

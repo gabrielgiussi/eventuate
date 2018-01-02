@@ -64,11 +64,11 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
     if (batching) Props(new BatchingLayer(logProps)) else logProps
   }
 
-  def service(endpoint: ReplicationEndpoint): (ORSetService[String], TestProbe) = {
+  def service(endpoint: ReplicationEndpoint): (AWSetService[String], TestProbe) = {
     implicit val system = endpoint.system
 
     val probe = TestProbe()
-    val service = new ORSetService[String](endpoint.id, endpoint.logs("L1"))(system, ORSet.ORSetServiceOps) {
+    val service = new AWSetService[String](endpoint.id, endpoint.logs("L1"))(system, AWSet.AWSetServiceOps) {
       val startCounter = new AtomicInteger()
       val stopCounter = new AtomicInteger()
 
@@ -94,7 +94,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
     (service, probe)
   }
 
-  "A replicated ORSet" must {
+  "A replicated AWSet" must {
     "converge under concurrent updates and write failures" in {
       val numUpdates = 100
 
@@ -123,14 +123,14 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
       probeC.expectMsg("started")
       probeD.expectMsg("started")
 
-      def singleUpdate(service: ORSetService[String])(implicit executionContext: ExecutionContext): Future[Unit] = {
+      def singleUpdate(service: AWSetService[String])(implicit executionContext: ExecutionContext): Future[Unit] = {
         Future.sequence(List(
           service.add(crdtId, randomNr()).recover { case _ => () },
           service.remove(crdtId, randomNr())
         )).map(_ => ())
       }
 
-      def batchUpdate(service: ORSetService[String]): Future[Unit] = {
+      def batchUpdate(service: AWSetService[String]): Future[Unit] = {
         import scala.concurrent.ExecutionContext.Implicits.global
         1.to(numUpdates).foldLeft(Future.successful(())) {
           case (acc, _) => acc.flatMap(_ => singleUpdate(service))

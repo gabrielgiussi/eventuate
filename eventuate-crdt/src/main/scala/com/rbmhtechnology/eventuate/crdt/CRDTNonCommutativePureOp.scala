@@ -15,6 +15,7 @@
  */
 
 package com.rbmhtechnology.eventuate.crdt
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
 import com.rbmhtechnology.eventuate.{ DurableEvent, VectorTime, Versioned }
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 
@@ -32,8 +33,6 @@ object CRDT {
 
     def stable[_](stableT: VectorTime)(implicit ops: CRDTNonCommutativePureOp[_, A]) = ops.stable(crdt, stableT)
 
-    //def polog()(implicit ops: CRDTNonCommutativePureOp[_, A]) = crdt.polog
-
   }
 
   def apply[A](state: A): CRDT[A] = CRDT(POLog(), state)
@@ -43,29 +42,16 @@ object CRDT {
 
 case class CRDT[B](polog: POLog, state: B) extends CRDTFormat {
 
-  // TODO this logic can go here or in CRDTPureOp (this has an impact on composability)
-  def addOp(op: Operation, timestamp: VectorTime, systemTimestamp: Long = 0L, creator: String = "")(implicit obs: Obsolete) = {
+  // TODO here or in POLog?
+  def addOp(op: Operation, timestamp: VectorTime, systemTimestamp: Long = 0L, creator: String = "")(implicit red: CausalRedundancy) = {
     val versionedOp = Versioned(op, timestamp, systemTimestamp, creator)
-    val p = polog prune (versionedOp, obs) add (versionedOp, obs) // TODO make obs implicit param
-    // val s = pruneState(op, state, obs) TODO
-    copy(polog = p)
+    copy(polog = polog.add(versionedOp))
   }
 }
-
-/*
-object CRDTCommutativePureOp {
-
-  implicit class EnhancedCRDT[A](crdt: A) {
-    def eval(implicit ops: CRDTCommutativePureOp[A]) = ops.eval(crdt)
-
-    def value(implicit ops: CRDTCommutativePureOp[A]) = eval(ops)
-  }
-}
-*/
 
 trait CRDTNonCommutativePureOp[B, C] extends CRDTServiceOps[CRDT[C], B] {
 
-  implicit def obs: Obsolete
+  implicit def causalRedundancy: CausalRedundancy
 
   def effect(crdt: CRDT[C], op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): CRDT[C] =
     crdt.addOp(op, vt, systemTimestamp, creator)

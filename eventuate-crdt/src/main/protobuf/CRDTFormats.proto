@@ -28,7 +28,7 @@ message CRDTPureOpFormat {
   optional bytes state = 2;
 }
 
-message ORCartEntryFormat {
+message AWCartEntryFormat {
   optional PayloadFormat key = 1;
   optional int32 quantity = 2;
 }
@@ -52,4 +52,8 @@ message AddOpFormat {
 message RemoveOpFormat {
   optional PayloadFormat entry = 1;
   repeated VectorTimeFormat timestamps = 2;
+}
+
+message ClearFormat {
+
 }

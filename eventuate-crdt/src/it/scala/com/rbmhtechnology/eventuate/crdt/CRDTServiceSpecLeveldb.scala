@@ -18,6 +18,8 @@ package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
 import akka.testkit._
+import com.rbmhtechnology.eventuate.VectorTime
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.{ DurableEvent, SingleLocationSpecLeveldb }
 import com.rbmhtechnology.eventuate.utilities._
 import org.scalatest._
@@ -26,6 +28,42 @@ import scala.concurrent.Future
 import scala.util.{ Failure, Try }
 
 class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecLike with Matchers with SingleLocationSpecLeveldb {
+  "A CRDTService" must {
+    "manage multiple CRDTs identified by name" in {
+      import Counter._
+      val service = new CounterService[Int]("a", log)
+      service.update("a", 1).await should be(1)
+      service.update("b", 2).await should be(2)
+      service.value("a").await should be(1)
+      service.value("b").await should be(2)
+    }
+    "ignore events from CRDT services of different type" in {
+      val service1 = new CounterService[Int]("a", log)(implicitly, implicitly, Counter.CounterServiceOps)
+      val service2 = new MVRegisterService[Int]("b", log)(implicitly, MVRegister.MVRegisterServiceOps)
+      val service3 = new LWWRegisterService[Int]("c", log)(implicitly, LWWRegister.LWWRegisterServiceOps)
+      service1.update("a", 1).await should be(1)
+      service2.assign("a", 1).await should be(Set(1))
+      service3.assign("a", 1).await should be(Some(1))
+    }
+    "return CRDT's prepare failures as failed future" in {
+      class PrepareException extends RuntimeException
+      implicit object FailingAtPrepareCRDTServiceOps extends CRDTServiceOps[Unit, Unit] {
+        override def zero: Unit = ()
+        override def eval(crdt: Unit): Unit = ()
+        override def prepare(crdt: Unit, operation: Any): Try[Option[Any]] = Failure(new PrepareException)
+        override def effect(crdt: Unit, op: Operation, vt: VectorTime, systemTimestamp: Long, creator: String): Unit = ()
+      }
+      class FailingAtPrepareCRDTService(val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[Unit, Unit])
+        extends CRDTService[Unit, Unit] {
+        def operation(crdtId: String): Future[Unit] = op(crdtId, ())
+        start()
+      }
+
+      val service = new FailingAtPrepareCRDTService("a", log)
+      intercept[PrepareException](service.operation("a").await)
+    }
+  }
+
   "A CounterService" must {
     import Counter._
     "return the default value of a Counter" in {
@@ -46,31 +84,31 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
     }
   }
 
-  "An ORSetService" must {
-    import ORSet._
-    "return the default value of an ORSet" in {
-      val service = new ORSetService[Int]("a", log)
+  "An AWSetService" must {
+    import AWSet._
+    "return the default value of an AWSet" in {
+      val service = new AWSetService[Int]("a", log)
       service.value("a").await should be(Set())
     }
     "add an entry" in {
-      val service = new ORSetService[Int]("a", log)
+      val service = new AWSetService[Int]("a", log)
       service.add("a", 1).await should be(Set(1))
       service.value("a").await should be(Set(1))
     }
     "mask duplicates" in {
-      val service = new ORSetService[Int]("a", log)
+      val service = new AWSetService[Int]("a", log)
       service.add("a", 1).await should be(Set(1))
       service.add("a", 1).await should be(Set(1))
       service.value("a").await should be(Set(1))
     }
     "remove an entry" in {
-      val service = new ORSetService[Int]("a", log)
+      val service = new AWSetService[Int]("a", log)
       service.add("a", 1).await should be(Set(1))
       service.remove("a", 1).await should be(Set())
       service.value("a").await should be(Set())
     }
     "remove duplicates" in {
-      val service = new ORSetService[Int]("a", log)
+      val service = new AWSetService[Int]("a", log)
       service.add("a", 1).await should be(Set(1))
       service.add("a", 1).await should be(Set(1))
       service.remove("a", 1).await should be(Set())
@@ -90,76 +128,9 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
       service.value("a").await should be(Set(1))
     }
   }
-}
-/*
-class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecLike with Matchers with SingleLocationSpecLeveldb {
-  "A CRDTService" must {
-    "manage multiple CRDTs identified by name" in {
-      val service = new CounterService[Int]("a", log)
-      service.update("a", 1).await should be(1)
-      service.update("b", 2).await should be(2)
-      service.value("a").await should be(1)
-      service.value("b").await should be(2)
-    }
-    "ignore events from CRDT services of different type" in {
-      val service1 = new CounterService[Int]("a", log)
-      val service2 = new MVRegisterService[Int]("b", log)
-      val service3 = new LWWRegisterService[Int]("c", log)
-      service1.update("a", 1).await should be(1)
-      service2.assign("a", 1).await should be(Set(1))
-      service3.assign("a", 1).await should be(Some(1))
-    }
-    "return CRDT's prepare failures as failed future" in {
-      class PrepareException extends RuntimeException
-      implicit object FailingAtPrepareCRDTServiceOps extends CRDTServiceOps[Unit, Unit] {
-        override def zero: Unit = ()
-        override def value(crdt: Unit): Unit = ()
-        override def prepare(crdt: Unit, operation: Any): Try[Option[Any]] = Failure(new PrepareException)
-        override def effect(crdt: Unit, operation: Any, event: DurableEvent): Unit = ()
-      }
-      class FailingAtPrepareCRDTService(val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[Unit, Unit])
-        extends CRDTService[Unit, Unit] {
-        def operation(crdtId: String): Future[Unit] = op(crdtId, ())
-        start()
-      }
-
-      val service = new FailingAtPrepareCRDTService("a", log)
-      intercept[PrepareException](service.operation("a").await)
-    }
-  }
-
-  "A CounterService" must {
-    "return the default value of a Counter" in {
-      val service = new CounterService[Int]("a", log)
-      service.value("a").await should be(0)
-    }
-    "increment a Counter" in {
-      val service = new CounterService[Int]("a", log)
-      service.update("a", 3).await should be(3)
-      service.update("a", 2).await should be(5)
-      service.value("a").await should be(5)
-    }
-    "decrement a Counter" in {
-      val service = new CounterService[Int]("a", log)
-      service.update("a", -3).await should be(-3)
-      service.update("a", -2).await should be(-5)
-      service.value("a").await should be(-5)
-    }
-  }
-
-  "An MVRegisterService" must {
-    "return the default value of an MVRegister" in {
-      val service = new MVRegisterService[Int]("a", log)
-      service.value("a").await should be(Set())
-    }
-    "return the written value of an MVRegister" in {
-      val service = new MVRegisterService[Int]("a", log)
-      service.assign("a", 1).await should be(Set(1))
-      service.value("a").await should be(Set(1))
-    }
-  }
 
   "An LWWRegisterService" must {
+    import LWWRegister._
     "return the default value of an LWWRegister" in {
       val service = new LWWRegisterService[Int]("a", log)
       service.value("a").await should be(None)
@@ -171,65 +142,34 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
     }
   }
 
-  "An ORSetService" must {
-    "return the default value of an ORSet" in {
-      val service = new ORSetService[Int]("a", log)
-      service.value("a").await should be(Set())
-    }
-    "add an entry" in {
-      val service = new ORSetService[Int]("a", log)
-      service.add("a", 1).await should be(Set(1))
-      service.value("a").await should be(Set(1))
-    }
-    "mask duplicates" in {
-      val service = new ORSetService[Int]("a", log)
-      service.add("a", 1).await should be(Set(1))
-      service.add("a", 1).await should be(Set(1))
-      service.value("a").await should be(Set(1))
-    }
-    "remove an entry" in {
-      val service = new ORSetService[Int]("a", log)
-      service.add("a", 1).await should be(Set(1))
-      service.remove("a", 1).await should be(Set())
-      service.value("a").await should be(Set())
-    }
-    "remove duplicates" in {
-      val service = new ORSetService[Int]("a", log)
-      service.add("a", 1).await should be(Set(1))
-      service.add("a", 1).await should be(Set(1))
-      service.remove("a", 1).await should be(Set())
-      service.value("a").await should be(Set())
-    }
-  }
-
-  "An ORCartService" must {
-    "return the default value of an ORCart" in {
-      val service = new ORCartService[String]("a", log)
+  "An AWCartService" must {
+    import AWCart._
+    "return the default value of an AWCart" in {
+      val service = new AWCartService[String]("a", log)
       service.value("a").await should be(Map())
     }
     "set initial entry quantities" in {
-      val service = new ORCartService[String]("a", log)
+      val service = new AWCartService[String]("a", log)
       service.add("a", "123", 1).await should be(Map("123" -> 1))
       service.add("a", "124", 1).await should be(Map("123" -> 1, "124" -> 1))
       service.value("a").await should be(Map("123" -> 1, "124" -> 1))
     }
     "increment existing entry quantities" in {
-      val service = new ORCartService[String]("a", log)
+      val service = new AWCartService[String]("a", log)
       service.add("a", "123", 1).await should be(Map("123" -> 1))
       service.add("a", "123", 1).await should be(Map("123" -> 2))
     }
     "remove entries" in {
-      val service = new ORCartService[String]("a", log)
+      val service = new AWCartService[String]("a", log)
       service.add("a", "123", 1).await should be(Map("123" -> 1))
       service.add("a", "124", 1).await should be(Map("123" -> 1, "124" -> 1))
       service.remove("a", "123").await should be(Map("124" -> 1))
       service.value("a").await should be(Map("124" -> 1))
     }
     "reject non-positive quantities" in {
-      val service = new ORCartService[String]("a", log)
+      val service = new AWCartService[String]("a", log)
       intercept[IllegalArgumentException](service.add("a", "123", 0).await)
       intercept[IllegalArgumentException](service.add("a", "123", -1).await)
     }
   }
 }
-*/

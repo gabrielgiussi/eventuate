@@ -16,6 +16,7 @@
 
 package com.rbmhtechnology.eventuate.crdt
 
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
 import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
 
@@ -32,25 +33,22 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
   // puedo poner implicit en obs?
   /**
    * when a new pair (t, o) is delivered to a replica, effect discards from the PO-Log all elements x such that obsolete(x, (t, o)) holds
-   * @param op
-   * @param obs
-   * @return
    */
-  def prune(op: Versioned[Operation], obs: Obsolete): POLog = copy(log filter (!obs(_, op))) // TODO review if this is ok
+  private def prune(ops: Set[Versioned[Operation]], r: Versioned[Operation] => Boolean) = ops filter (!r(_)) // TODO review if this is ok
 
   /**
    * the delivered pair (t, o) is only inserted into the PO-Log if it is not
    * redundant itself, according to the current elements, i.e., if for any current x
    * in the PO-Log obsolete((t, o), x) is false
-   * @param op
-   * @param obs
-   * @return
    */
-  def add(op: Versioned[Operation], obs: Obsolete): POLog = {
+  def add(op: Versioned[Operation])(implicit red: CausalRedundancy): POLog = {
     //if ((log.isEmpty) || (log.exists { !obs(op, _) })) copy(log + op)
-    // TODO this check should only be for testing.
-    if ((log.isEmpty) || (log.forall { !obs(op, _) })) copy(log + op) // TODO review if this is ok (forall o exists?)
-    else this
+    // TODO check to not add twice the same VectorTime should only be for testing.
+    if (!red.r(op, this)) copy(prune(log + op, red.r1(op)))
+    else copy(prune(log, red.r0(op)))
+
+    //if ((log.isEmpty) || (log.forall { !obs(op, _) })) copy(log + op) // TODO review if this is ok (forall o exists?)
+    //else this
   }
 
   // TODO Stable can be in VectorTimestamp?

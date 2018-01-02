@@ -24,14 +24,20 @@ package object CRDTTypes {
   // primer parametros = new Pair (t,o)
   type Obsolete = (Versioned[Operation], Versioned[Operation]) => Boolean
 
-  type PruneState[A] = (Operation, A, Obsolete) => A
+  //type PruneState[A] = (Operation, A, Obsolete) => A
 
-  type UpdateState[A] = (A, Versioned[Operation]) => A
+  //type UpdateState[A] = (A, Versioned[Operation]) => A
 
-  type Eval[A] = (POLog, A) => A
+  //type Eval[A] = (POLog, A) => A
 
   type Operation = Any
 
-  //type State = Any
+  type R = (Versioned[Operation], POLog) => Boolean
+
+  type R_ = Versioned[Operation] => Versioned[Operation] => Boolean
+
+  case class CausalRedundancy(r: R, r0: R_, r1: R_) {
+    def this(r: R, r0: R_) = this(r, r0, r0)
+  }
 
 }

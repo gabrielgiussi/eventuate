@@ -39,7 +39,8 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private val AssignOpClass = classOf[AssignOp]
   private val AddOpClass = classOf[AddOp]
   private val RemoveOpClass = classOf[RemoveOp]
-  private val ORCartEntryClass = classOf[ORCartEntry[_]]
+  private val AWCartEntryClass = classOf[AWCartEntry[_]]
+  private val ClearClass = Clear.getClass
 
   override def identifier: Int = 22567
 
@@ -58,8 +59,10 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
       removeOpFormatBuilder(o).build().toByteArray
     case o: AssignOp =>
       assignOpFormatBuilder(o).build().toByteArray
-    case e: ORCartEntry[_] =>
-      orCartEntryFormatBuilder(e).build().toByteArray
+    case e: AWCartEntry[_] =>
+      awCartEntryFormatBuilder(e).build().toByteArray
+    case Clear =>
+      ClearFormat.newBuilder().build().toByteArray
     case _ =>
       throw new IllegalArgumentException(s"can't serialize object of type ${o.getClass}")
   }
@@ -79,8 +82,9 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
         addOp(AddOpFormat.parseFrom(bytes))
       case RemoveOpClass =>
         removeOp(RemoveOpFormat.parseFrom(bytes))
-      case ORCartEntryClass =>
-        orCartEntry(ORCartEntryFormat.parseFrom(bytes))
+      case AWCartEntryClass =>
+        orCartEntry(AWCartEntryFormat.parseFrom(bytes))
+      case ClearClass => Clear
       case _ =>
         throw new IllegalArgumentException(s"can't deserialize object of type ${clazz}")
     }
@@ -172,270 +176,16 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private def assignOpFormatBuilder(op: AssignOp): AssignOpFormat.Builder =
     AssignOpFormat.newBuilder.setValue(payloadSerializer.payloadFormatBuilder(op.value.asInstanceOf[AnyRef]))
 
-  private def orCartEntryFormatBuilder(orCartEntry: ORCartEntry[_]): ORCartEntryFormat.Builder = {
-    val builder = ORCartEntryFormat.newBuilder
+  private def awCartEntryFormatBuilder(orCartEntry: AWCartEntry[_]): AWCartEntryFormat.Builder = {
+    val builder = AWCartEntryFormat.newBuilder
 
     builder.setKey(payloadSerializer.payloadFormatBuilder(orCartEntry.key.asInstanceOf[AnyRef]))
     builder.setQuantity(orCartEntry.quantity)
     builder
   }
 
-  private def orCartEntry(orCartEntryFormat: ORCartEntryFormat): ORCartEntry[Any] =
-    ORCartEntry(payloadSerializer.payload(orCartEntryFormat.getKey), orCartEntryFormat.getQuantity)
+  private def orCartEntry(orCartEntryFormat: AWCartEntryFormat): AWCartEntry[Any] =
+    AWCartEntry(payloadSerializer.payload(orCartEntryFormat.getKey), orCartEntryFormat.getQuantity)
 
 }
-/*
-class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
-  val commonSerializer = new CommonSerializer(system)
 
-  import commonSerializer.payloadSerializer
-
-  private val MVRegisterClass = classOf[MVRegister[_]]
-  private val LWWRegisterClass = classOf[LWWRegister[_]]
-  /*
-    private val ORCartClass = classOf[ORCart[_]]
-    private val ORCartEntryClass = classOf[ORCartEntry[_]]
-      */
-  private val ValueUpdatedClass = classOf[ValueUpdated]
-  private val ORSetClass = classOf[ORSet[_]]
-  private val UpdatedOpClass = classOf[UpdateOp]
-  private val CounterClass = classOf[Counter[_]]
-
-  private val AssignOpClass = classOf[AssignOp]
-  private val AddOpClass = classOf[AddOp]
-  private val RemoveOpClass = classOf[RemoveOp]
-
-  override def identifier: Int = 22567
-
-  override def includeManifest: Boolean = true
-
-  override def toBinary(o: AnyRef): Array[Byte] = o match {
-    case r: LWWRegister[_] =>
-      lwwRegisterFormatBuilder(r).build().toByteArray
-    case c: CRDT[_] =>
-      crdtFormatBuilder(c).build().toByteArray
-    /*
-        case s: ORCart[_] =>
-          orCartFormatBuilder(s).build().toByteArray
-        case s: ORCartEntry[_] =>
-          orCartEntryFormatBuilder(s).build().toByteArray
-        */
-    case v: ValueUpdated =>
-      valueUpdatedFormat(v).build().toByteArray
-    case o: UpdateOp =>
-      updateOpFormatBuilder(o).build().toByteArray
-    case o: AssignOp =>
-      assignOpFormatBuilder(o).build().toByteArray
-    case o: AddOp =>
-      addOpFormatBuilder(o).build().toByteArray
-    case o: RemoveOp =>
-      removeOpFormatBuilder(o).build().toByteArray
-    case _ =>
-      throw new IllegalArgumentException(s"can't serialize object of type ${o.getClass}")
-  }
-
-  override def fromBinary(bytes: Array[Byte], manifest: Option[Class[_]]): AnyRef = manifest match {
-    case None => throw new IllegalArgumentException("manifest required")
-    case Some(clazz) => clazz match {
-      case MVRegisterClass =>
-        mvRegister(CRDTPureOpFormat.parseFrom(bytes))
-      case LWWRegisterClass =>
-        lwwRegister(LWWRegisterFormat.parseFrom(bytes))
-      /*
-      case ORCartClass =>
-        orCart(ORCartFormat.parseFrom(bytes))
-      case ORCartEntryClass =>
-        orCartEntry(ORCartEntryFormat.parseFrom(bytes))
-      */
-      case ORSetClass =>
-        orset(CRDTPureOpFormat.parseFrom(bytes))
-      case ValueUpdatedClass =>
-        valueUpdated(ValueUpdatedFormat.parseFrom(bytes))
-      case UpdatedOpClass =>
-        updateOp(UpdateOpFormat.parseFrom(bytes))
-      case CounterClass =>
-        counter(CRDTPureOpFormat.parseFrom(bytes))
-      case AssignOpClass =>
-        assignOp(AssignOpFormat.parseFrom(bytes))
-      case AddOpClass =>
-        addOp(AddOpFormat.parseFrom(bytes))
-      case RemoveOpClass =>
-        removeOp(RemoveOpFormat.parseFrom(bytes))
-      case _ =>
-        throw new IllegalArgumentException(s"can't deserialize object of type ${clazz}")
-    }
-  }
-
-  // --------------------------------------------------------------------------------
-  //  toBinary helpers
-  // --------------------------------------------------------------------------------
-
-  private def lwwRegisterFormatBuilder(lwwRegister: LWWRegister[_]): LWWRegisterFormat.Builder = {
-    val builder = LWWRegisterFormat.newBuilder
-    builder.setMvRegister(crdtFormatBuilder(lwwRegister.mvRegister))
-  }
-  /*
-   private def mvRegisterFormatBuilder(mVRegister: MVRegister[_]): MVRegisterFormat.Builder = {
-     val builder = MVRegisterFormat.newBuilder
-
-     mVRegister.versioned.foreach { r =>
-       builder.addVersioned(commonSerializer.versionedFormatBuilder(r))
-     }
-
-     builder
-   }
-
-
-
-   private def orCartFormatBuilder(orCart: ORCart[_]): ORCartFormat.Builder =
-     ORCartFormat.newBuilder.setOrSet(orSetFormatBuilder(orCart.orSet))
-
-   private def orCartEntryFormatBuilder(orCartEntry: ORCartEntry[_]): ORCartEntryFormat.Builder = {
-     val builder = ORCartEntryFormat.newBuilder
-
-     builder.setKey(payloadSerializer.payloadFormatBuilder(orCartEntry.key.asInstanceOf[AnyRef]))
-     builder.setQuantity(orCartEntry.quantity)
-     builder
-   }
-
-   private def orSetFormatBuilder(orSet: ORSet[_]): ORSetFormat.Builder = {
-     val builder = ORSetFormat.newBuilder
-
-     orSet.versionedEntries.foreach { ve =>
-       builder.addVersionedEntries(commonSerializer.versionedFormatBuilder(ve))
-     }
-
-     builder
-   }
- */
-  private def pologBuilder(polog: POLog): POLogFormat.Builder = {
-    val builder = POLogFormat.newBuilder
-
-    polog.log.foreach { ve =>
-      builder.addVersionedEntries(commonSerializer.versionedFormatBuilder(ve))
-    }
-
-    builder
-  }
-
-  private def crdtFormatBuilder(c: CRDT[_]): CRDTPureOpFormat.Builder = {
-    CRDTPureOpFormat.newBuilder.setPolog(pologBuilder(c.polog)).setState(serializeState(c.state))
-  }
-
-  private def valueUpdatedFormat(valueUpdated: ValueUpdated): ValueUpdatedFormat.Builder =
-    ValueUpdatedFormat.newBuilder.setOperation(payloadSerializer.payloadFormatBuilder(valueUpdated.operation.asInstanceOf[AnyRef]))
-
-  private def updateOpFormatBuilder(op: UpdateOp): UpdateOpFormat.Builder =
-    UpdateOpFormat.newBuilder.setDelta(payloadSerializer.payloadFormatBuilder(op.delta.asInstanceOf[AnyRef]))
-
-  private def addOpFormatBuilder(op: AddOp): AddOpFormat.Builder =
-    AddOpFormat.newBuilder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
-
-  // TODO remove timestamps if no longer needed
-  private def removeOpFormatBuilder(op: RemoveOp): RemoveOpFormat.Builder = {
-    val builder = RemoveOpFormat.newBuilder
-
-    builder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
-
-    op.timestamps.foreach { timestamp =>
-      builder.addTimestamps(commonSerializer.vectorTimeFormatBuilder(timestamp))
-    }
-
-    builder
-  }
-
-  private def assignOpFormatBuilder(op: AssignOp): AssignOpFormat.Builder =
-    AssignOpFormat.newBuilder.setValue(payloadSerializer.payloadFormatBuilder(op.value.asInstanceOf[AnyRef]))
-
-  // --------------------------------------------------------------------------------
-  //  fromBinary helpers
-  // --------------------------------------------------------------------------------
-  /*
-
-    private def mvRegister(mvRegisterFormat: MVRegisterFormat): MVRegister[Any] = {
-      val rs = mvRegisterFormat.getVersionedList.iterator.asScala.foldLeft(Set.empty[Versioned[Any]]) {
-        case (acc, r) => acc + commonSerializer.versioned(r)
-      }
-
-      MVRegister(rs)
-    }
-
-    private def updateOp(opFormat: UpdateOpFormat): UpdateOp =
-      UpdateOp(payloadSerializer.payload(opFormat.getDelta))
-
-
-    private def orSet(orSetFormat: ORSetFormat): ORSet[Any] = {
-      val ves = orSetFormat.getVersionedEntriesList.iterator.asScala.foldLeft(Set.empty[Versioned[Any]]) {
-        case (acc, ve) => acc + commonSerializer.versioned(ve)
-      }
-
-      ORSet(ves)
-    }
-
-    private def orCart(orCartFormat: ORCartFormat): ORCart[Any] =
-      ORCart(orSet(orCartFormat.getOrSet).asInstanceOf[ORSet[ORCartEntry[Any]]])
-
-    private def orCartEntry(orCartEntryFormat: ORCartEntryFormat): ORCartEntry[Any] =
-      ORCartEntry(payloadSerializer.payload(orCartEntryFormat.getKey), orCartEntryFormat.getQuantity)
-
-    */
-  private def lwwRegister(lwwRegisterFormat: LWWRegisterFormat): LWWRegister[Any] =
-    LWWRegister(mvRegister(lwwRegisterFormat.getMvRegister).asInstanceOf[MVRegister[Any]])
-
-  private def assignOp(opFormat: AssignOpFormat): AssignOp =
-    AssignOp(payloadSerializer.payload(opFormat.getValue))
-
-  private def valueUpdated(valueUpdatedFormat: ValueUpdatedFormat): ValueUpdated =
-    ValueUpdated(payloadSerializer.payload(valueUpdatedFormat.getOperation))
-
-  private def addOp(opFormat: AddOpFormat): AddOp =
-    AddOp(payloadSerializer.payload(opFormat.getEntry))
-
-  // TODO remove timestamps if no longer needed
-  private def removeOp(opFormat: RemoveOpFormat): RemoveOp = {
-    val timestamps = opFormat.getTimestampsList.iterator().asScala.foldLeft(Set.empty[VectorTime]) {
-      case (result, timestampFormat) => result + commonSerializer.vectorTime(timestampFormat)
-    }
-
-    RemoveOp(payloadSerializer.payload(opFormat.getEntry), timestamps)
-  }
-
-  private def polog(pologFormat: POLogFormat): POLog = {
-    val rs = pologFormat.getVersionedEntriesList.iterator.asScala.foldLeft(Set.empty[Versioned[Any]]) {
-      case (acc, r) => acc + commonSerializer.versioned(r)
-    }
-
-    POLog(rs)
-  }
-
-  private def updateOp(opFormat: UpdateOpFormat): UpdateOp =
-    UpdateOp(payloadSerializer.payload(opFormat.getDelta))
-
-  private def counter(crdtFormat: CRDTPureOpFormat): Counter[_] = {
-    // TODO could not find implicit value for evidence parameter of type Integral[Object]
-    // add a field to the POLogFormat that said the type of the State?
-    Counter(polog(crdtFormat.getPolog), deserializeState(crdtFormat.getState).asInstanceOf[Int])
-  }
-
-  private def mvRegister(crdtFormat: CRDTPureOpFormat): MVRegister[_] =
-    MVRegister(polog(crdtFormat.getPolog), deserializeState(crdtFormat.getState).asInstanceOf[Set[_]])
-
-  private def orset(crdtFormat: CRDTPureOpFormat): ORSet[_] =
-    ORSet(polog(crdtFormat.getPolog), deserializeState(crdtFormat.getState).asInstanceOf[Set[_]])
-
-  def serializeState(state: Any): ByteString = {
-    val stream = new ByteArrayOutputStream()
-    val oos = new ObjectOutputStream(stream)
-    oos.writeObject(state)
-    oos.close()
-    ByteString.copyFrom(stream.toByteArray)
-  }
-
-  def deserializeState(state: ByteString): Any = {
-    val ois = new ObjectInputStream(new ByteArrayInputStream(state.toByteArray))
-    val deserialized = ois.readObject
-    ois.close
-    deserialized
-  }
-}
-*/

@@ -27,7 +27,7 @@ import com.rbmhtechnology.eventuate.crdt._
 import scala.collection.JavaConverters._
 
 /**
- * Replicated [[ORCart]] CRDT service.
+ * Replicated [[AWCart]] CRDT service.
  *
  *  - For adding a new `key` of given `quantity` a client should call `add`.
  *  - For incrementing the `quantity` of an existing `key` a client should call `add`.
@@ -37,17 +37,17 @@ import scala.collection.JavaConverters._
  *
  * @param serviceId Unique id of this service.
  * @param log Event log.
- * @tparam A [[ORCart]] key type.
+ * @tparam A [[AWCart]] key type.
  */
 class ORCartService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Map[A, Int], JMap[A, JInt]] {
 
   import CRDTConverter._
   import system._
-  import ORCart._
+  import AWCart._
 
   override protected val delegate =
-    new com.rbmhtechnology.eventuate.crdt.ORCartService[A](serviceId, log)
+    new com.rbmhtechnology.eventuate.crdt.AWCartService[A](serviceId, log)
 
   implicit protected def c: CRDTConverter[Map[A, Int], JMap[A, JInt]] =
     CRDTConverter(_.mapValues(v => v: JInt).asJava)

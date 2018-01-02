@@ -22,10 +22,10 @@ import org.scalatest._
 
 class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   val counter = Counter.apply[Int]
-  val orSet = ORSet.apply
+  val awSet = AWSet.apply
   val mvReg = MVRegister.apply
   val lwwReg = LWWRegister.apply
-  val orShoppingCart = ORCart.apply
+  val awShoppingCart = AWCart.apply
   val tpSet = TPSet.apply[Int]
 
   def vt(t1: Long, t2: Long): VectorTime =
@@ -60,51 +60,59 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .value shouldBe -2
     }
   }
-  "An ORSet" must {
-    import ORSet._
+  "An AWSet" must {
+    import AWSet._
     "be empty by default" in {
-      orSet.value should be('empty)
+      awSet.value should be('empty)
     }
     "add an entry" in {
-      orSet
+      awSet
         .add(1, vt(1, 0))
         .value should be(Set(1))
     }
     "mask sequential duplicates" in {
-      orSet
+      awSet
         .add(1, vt(1, 0))
         .add(1, vt(2, 0))
         .value should be(Set(1))
     }
     "mask concurrent duplicates" in {
-      orSet
+      awSet
         .add(1, vt(1, 0))
         .add(1, vt(0, 1))
         .value should be(Set(1))
     }
     "remove a pair" in {
-      orSet
+      awSet
         .add(1, vt(1, 0))
         .remove(1, vt(2, 0))
         .value should be(Set())
     }
     "keep an entry if not all pairs are removed" in {
-      orSet
+      awSet
         .add(1, vt(1, 0))
         .add(1, vt(0, 1))
         .remove(1, vt(2, 0))
         .value should be(Set(1))
     }
     "add an entry if concurrent to remove" in {
-      orSet
+      awSet
         .add(1, vt(1, 0))
         .remove(1, vt(2, 0))
         .add(1, vt(0, 1))
         .value should be(Set(1))
     }
     "return an empty set after a remove" in {
-      orSet
+      awSet
         .remove(1, vt(1, 0))
+        .value should be(Set())
+    }
+    "clear the set" in {
+      awSet
+        .add(1, vt(1, 0))
+        .add(2, vt(2, 0))
+        .add(3, vt(0, 1))
+        .clear(vt(2, 2))
         .value should be(Set())
     }
 
@@ -190,19 +198,19 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .value should be(Some(1))
     }
   }
-  "An ORCart" must {
-    import ORCart._
+  "An AWCart" must {
+    import AWCart._
     "be empty by default" in {
-      orShoppingCart.value should be('empty)
+      awShoppingCart.value should be('empty)
     }
     "set initial entry quantities" in {
-      orShoppingCart
+      awShoppingCart
         .add("a", 2, vt(1, 0))
         .add("b", 3, vt(2, 0))
         .value should be(Map("a" -> 2, "b" -> 3))
     }
     "increment existing entry quantities" in {
-      orShoppingCart
+      awShoppingCart
         .add("a", 1, vt(1, 0))
         .add("b", 3, vt(2, 0))
         .add("a", 1, vt(3, 0))
@@ -210,7 +218,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .value should be(Map("a" -> 2, "b" -> 4))
     }
     "remove observed entries" in {
-      orShoppingCart
+      awShoppingCart
         .add("a", 2, vt(1, 0))
         .add("b", 3, vt(2, 0))
         .add("a", 1, vt(3, 0))
@@ -220,13 +228,13 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .value should be(Map("b" -> 1))
     }
     "not remove entries if remove is concurrent" in {
-      orShoppingCart
+      awShoppingCart
         .add("a", 2, vt(1, 0))
         .remove("a", vt(0, 1))
         .value should be(Map("a" -> 2))
     }
     "remove only entries in the causal past" in {
-      orShoppingCart
+      awShoppingCart
         .add("a", 2, vt(1, 0))
         .add("a", 2, vt(3, 0))
         .remove("a", vt(1, 1))
