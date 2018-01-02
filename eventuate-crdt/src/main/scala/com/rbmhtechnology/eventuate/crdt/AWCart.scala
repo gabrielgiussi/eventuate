@@ -50,7 +50,7 @@ object AWCart {
         case Some(c) => acc + (key -> (c + quantity))
         case None    => acc + (key -> quantity)
       }
-      case (acc, Versioned(RemoveOp(_, _), _, _, _)) => acc
+      case (acc, Versioned(RemoveOp(_), _, _, _)) => acc
     }
 
     val r: R = (v, _) => v.value match {
@@ -61,7 +61,7 @@ object AWCart {
 
     val r0: R_ = newOp => op => {
       ((op.vectorTimestamp, op.value), (newOp.vectorTimestamp, newOp.value)) match {
-        case ((t1, AddOp(AWCartEntry(k1, _))), (t2, RemoveOp(k2, _))) => (t1 < t2) && (k1 equals k2)
+        case ((t1, AddOp(AWCartEntry(k1, _))), (t2, RemoveOp(k2))) => (t1 < t2) && (k1 equals k2)
         case ((t1, AddOp(_)), (t2, Clear)) => (t1 < t2)
         case _ => false
       }

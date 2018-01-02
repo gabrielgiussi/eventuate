@@ -51,7 +51,7 @@ object TPSet {
     override def effect(crdt: TPSet[A], op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): (Set[A], Set[A]) =
       (op, crdt) match {
         case (AddOp(e: A), (added, removed)) if (!removed.contains(e)) => (added + e, removed)
-        case (RemoveOp(e: A, _), (added, removed)) => (added - e, removed + e)
+        case (RemoveOp(e: A), (added, removed)) => (added - e, removed + e)
         case (_, crdt) => crdt
       }
   }

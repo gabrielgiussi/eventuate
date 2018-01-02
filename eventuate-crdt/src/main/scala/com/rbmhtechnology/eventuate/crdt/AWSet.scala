@@ -48,9 +48,9 @@ object AWSet {
 
     val r0: R_ = newOp => op => {
       ((op.vectorTimestamp, op.value), (newOp.vectorTimestamp, newOp.value)) match {
-        case ((t1, AddOp(v1)), (t2, AddOp(v2)))       => (t1 < t2) && (v1 equals v2)
-        case ((t1, AddOp(v1)), (t2, RemoveOp(v2, _))) => (t1 < t2) && (v1 equals v2)
-        case ((t1, AddOp(_)), (t2, Clear))            => (t1 < t2)
+        case ((t1, AddOp(v1)), (t2, AddOp(v2)))    => (t1 < t2) && (v1 equals v2)
+        case ((t1, AddOp(v1)), (t2, RemoveOp(v2))) => (t1 < t2) && (v1 equals v2)
+        case ((t1, AddOp(_)), (t2, Clear))         => (t1 < t2)
       }
     }
 
@@ -98,6 +98,6 @@ case class AddOp(entry: Any) extends CRDTFormat
 /**
  * Persistent remove operation used for [[AWSet]] and [[AWCart]].
  */
-case class RemoveOp(entry: Any, timestamps: Set[VectorTime] = Set.empty) extends CRDTFormat // FIXME timestamp needed?
+case class RemoveOp(entry: Any) extends CRDTFormat // FIXME timestamp needed?
 
 case object Clear extends CRDTFormat

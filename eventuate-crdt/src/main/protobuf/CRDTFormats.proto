@@ -51,7 +51,6 @@ message AddOpFormat {
 
 message RemoveOpFormat {
   optional PayloadFormat entry = 1;
-  repeated VectorTimeFormat timestamps = 2;
 }
 
 message ClearFormat {

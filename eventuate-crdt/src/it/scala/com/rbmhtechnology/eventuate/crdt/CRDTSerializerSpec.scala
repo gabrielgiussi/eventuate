@@ -55,7 +55,7 @@ object CRDTSerializerSpec {
   }
 
   def removeOp(payload: ExamplePayload): RemoveOp =
-    RemoveOp(payload, Set(VectorTime("s" -> 19L), VectorTime("t" -> 20L)))
+    RemoveOp(payload)
 }
 
 class CRDTSerializerSpec extends WordSpec with Matchers with BeforeAndAfterAll {

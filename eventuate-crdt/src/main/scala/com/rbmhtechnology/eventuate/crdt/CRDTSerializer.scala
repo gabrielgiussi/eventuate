@@ -135,14 +135,8 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private def addOp(opFormat: AddOpFormat): AddOp =
     AddOp(payloadSerializer.payload(opFormat.getEntry))
 
-  // TODO remove timestamps if no longer needed
-  private def removeOp(opFormat: RemoveOpFormat): RemoveOp = {
-    val timestamps = opFormat.getTimestampsList.iterator().asScala.foldLeft(Set.empty[VectorTime]) {
-      case (result, timestampFormat) => result + commonSerializer.vectorTime(timestampFormat)
-    }
-
-    RemoveOp(payloadSerializer.payload(opFormat.getEntry), timestamps)
-  }
+  private def removeOp(opFormat: RemoveOpFormat): RemoveOp =
+    RemoveOp(payloadSerializer.payload(opFormat.getEntry))
 
   private def crdtFormatBuilder(c: CRDT[_]): CRDTPureOpFormat.Builder = {
     CRDTPureOpFormat.newBuilder.setPolog(pologBuilder(c.polog)).setState(serializeState(c.state))
@@ -158,17 +152,8 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
     AddOpFormat.newBuilder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
 
   // TODO remove timestamps if no longer needed
-  private def removeOpFormatBuilder(op: RemoveOp): RemoveOpFormat.Builder = {
-    val builder = RemoveOpFormat.newBuilder
-
-    builder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
-
-    op.timestamps.foreach { timestamp =>
-      builder.addTimestamps(commonSerializer.vectorTimeFormatBuilder(timestamp))
-    }
-
-    builder
-  }
+  private def removeOpFormatBuilder(op: RemoveOp): RemoveOpFormat.Builder =
+    RemoveOpFormat.newBuilder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
 
   private def assignOp(opFormat: AssignOpFormat): AssignOp =
     AssignOp(payloadSerializer.payload(opFormat.getValue))
