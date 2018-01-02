@@ -46,8 +46,8 @@ object AWSet {
       case _           => false
     }
 
-    val r0: R_ = op2 => op1 => {
-      ((op1.vectorTimestamp, op1.value), (op2.vectorTimestamp, op2.value)) match {
+    val r0: R_ = newOp => op => {
+      ((op.vectorTimestamp, op.value), (newOp.vectorTimestamp, newOp.value)) match {
         case ((t1, AddOp(v1)), (t2, AddOp(v2)))       => (t1 < t2) && (v1 equals v2)
         case ((t1, AddOp(v1)), (t2, RemoveOp(v2, _))) => (t1 < t2) && (v1 equals v2)
         case ((t1, AddOp(_)), (t2, Clear))            => (t1 < t2)
@@ -85,7 +85,7 @@ class AWSetService[A](val serviceId: String, val log: ActorRef)(implicit val sys
     op(id, RemoveOp(entry))
 
   def clear(id: String): Future[Set[A]] =
-    op(id, Clear) // TODO untested!
+    op(id, Clear)
 
   start()
 }

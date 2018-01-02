@@ -107,13 +107,26 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .remove(1, vt(1, 0))
         .value should be(Set())
     }
-    "clear the set" in {
+    "return an empty set after a clear" in {
+      awSet
+        .clear(vt(1, 0))
+        .value should be(Set())
+    }
+    "remove all entries after a clear" in {
       awSet
         .add(1, vt(1, 0))
         .add(2, vt(2, 0))
         .add(3, vt(0, 1))
         .clear(vt(2, 2))
         .value should be(Set())
+    }
+    "remove all entries in the causal past after a clear" in {
+      awSet
+        .add(1, vt(1, 0))
+        .add(2, vt(2, 0))
+        .add(3, vt(0, 1))
+        .clear(vt(3, 0))
+        .value should be(Set(3))
     }
 
   }
@@ -240,6 +253,28 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .remove("a", vt(1, 1))
         .value should be(Map("a" -> 2))
     }
+    "return an empty set after a clear" in {
+      awShoppingCart
+        .clear(vt(1, 0))
+        .value should be('empty)
+    }
+    "remove all entries after a clear" in {
+      awShoppingCart
+        .add("a", 1, vt(1, 0))
+        .add("b", 2, vt(2, 0))
+        .add("a", 1, vt(0, 1))
+        .clear(vt(2, 2))
+        .value should be('empty)
+    }
+    "remove all entries in the causal past after a clear" in {
+      awShoppingCart
+        .add("a", 1, vt(1, 0))
+        .add("b", 2, vt(0, 1))
+        .add("a", 1, vt(2, 0))
+        .clear(vt(1, 2))
+        .value should be(Map("a" -> 1))
+    }
+
   }
 
   "A TPSet" must {

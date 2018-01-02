@@ -36,10 +36,11 @@ case class AWCartEntry[A](key: A, quantity: Int) extends CRDTFormat
 object AWCart {
   def apply(): SimpleCRDT = ORCartServiceOps.zero
 
-  implicit class ORCartCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
+  implicit class AWCartCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
 
     def add(key: A, quantity: Int, timestamp: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AddOp(AWCartEntry(key, quantity)), timestamp)
     def remove(key: A, t: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, RemoveOp(key), t)
+    def clear(t: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, Clear, t)
   }
 
   implicit def ORCartServiceOps[A] = new CRDTNonCommutativePureOpSimple[Map[A, Int]] {
@@ -61,7 +62,7 @@ object AWCart {
     val r0: R_ = newOp => op => {
       ((op.vectorTimestamp, op.value), (newOp.vectorTimestamp, newOp.value)) match {
         case ((t1, AddOp(AWCartEntry(k1, _))), (t2, RemoveOp(k2, _))) => (t1 < t2) && (k1 equals k2)
-        case ((_, RemoveOp(_, _)), _) => true
+        case ((t1, AddOp(_)), (t2, Clear)) => (t1 < t2)
         case _ => false
       }
     }
@@ -99,7 +100,7 @@ class AWCartService[A](val serviceId: String, val log: ActorRef)(implicit val sy
     op(id, RemoveOp(key))
 
   def clear(id: String): Future[Map[A, Int]] =
-    op(id, Clear) // TODO untested!
+    op(id, Clear)
 
   start()
 }
