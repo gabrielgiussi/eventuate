@@ -210,6 +210,26 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .assign(2, vt(0, 1), 0, "emitter-1")
         .value should be(Some(1))
     }
+    "return none value after just a clear" in {
+      lwwReg
+        .clear(vt(1, 0))
+        .value shouldBe None
+    }
+    "remove all values after a clear" in {
+      lwwReg
+        .assign(1, vt(1, 0), 0, "emmiter1")
+        .assign(2, vt(2, 0), 1, "emmiter1")
+        .assign(3, vt(0, 1), 2, "emmiter2")
+        .clear(vt(2, 2))
+        .value shouldBe None
+    }
+    "remove only values in the causal past of a clear" in {
+      lwwReg
+        .assign(1, vt(1, 0), 0, "emitter-1")
+        .assign(2, vt(0, 1), 0, "emitter-2")
+        .clear(vt(0, 2))
+        .value shouldBe Some(1)
+    }
   }
   "An AWCart" must {
     import AWCart._
@@ -253,12 +273,12 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .remove("a", vt(1, 1))
         .value should be(Map("a" -> 2))
     }
-    "return an empty set after a clear" in {
+    "return empty after just a clear" in {
       awShoppingCart
         .clear(vt(1, 0))
         .value should be('empty)
     }
-    "remove all entries after a clear" in {
+    "remove all entries after just a clear" in {
       awShoppingCart
         .add("a", 1, vt(1, 0))
         .add("b", 2, vt(2, 0))
@@ -312,7 +332,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .add(1, vt(2, 1))
         .value should be(Set())
     }
-    "commute" in {
+    "commute" in { // TODO rename!
       tpSet
         .add(1, vt(1, 0))
         .remove(1, vt(0, 1))

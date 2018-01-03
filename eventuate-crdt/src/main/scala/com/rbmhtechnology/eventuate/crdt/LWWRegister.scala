@@ -34,6 +34,7 @@ object LWWRegister {
 
   implicit class LWWRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
     def assign(value: A, vectorTime: VectorTime, timestamp: Long, creator: String)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AssignOp(value), vectorTime, timestamp, creator)
+    def clear(vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, Clear, vectorTime)
   }
 
   implicit def LWWOrdering[A] = new Ordering[Versioned[_]] {
@@ -49,14 +50,12 @@ object LWWRegister {
     override def precondition: Boolean =
       false
 
-    override def customEval(ops: Seq[Versioned[Operation]]): Option[A] = ops.headOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A])
+    override def customEval(ops: Seq[Versioned[Operation]]): Option[A] =
+      ops.sorted(LWWRegister.LWWOrdering[A]).lastOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A])
 
-    val r: R = (op, _) => op.value.isInstanceOf[Clear.type]
+    val r: R = (op, _) => op.value equals Clear
 
-    val r0: R_ = newOp => op => {
-      if (op.vectorTimestamp || newOp.vectorTimestamp) LWWRegister.LWWOrdering[A].lt(op, newOp)
-      else op.vectorTimestamp < newOp.vectorTimestamp
-    }
+    val r0: R_ = newOp => op => op.vectorTimestamp < newOp.vectorTimestamp
 
     override implicit val causalRedundancy: CausalRedundancy = new CausalRedundancy(r, r0)
   }
@@ -80,7 +79,7 @@ class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit v
     op(id, AssignOp(value))
 
   def clear(id: String): Future[Option[A]] =
-    op(id, Clear) // TODO untested!
+    op(id, Clear)
 
   start()
 }

@@ -54,8 +54,8 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
   // TODO Stable can be in VectorTimestamp?
   def stable(stable: VectorTime): (POLog, Seq[Operation]) = {
     val (stableOps, nonStableOps) = log.foldLeft((Seq.empty[Operation], Seq.empty[Versioned[Operation]])) {
-      case ((stableOps, nonStableOps), op) if (op.vectorTimestamp <= stable) => (stableOps :+ op.value, nonStableOps)
-      case ((stableOps, nonStableOps), op)                                   => (stableOps, nonStableOps :+ op)
+      case ((stableOps, nonStableOps), op) if (op.vectorTimestamp.stableAt(stable)) => (stableOps :+ op.value, nonStableOps)
+      case ((stableOps, nonStableOps), op) => (stableOps, nonStableOps :+ op)
     }
     (copy(log = nonStableOps.toSet), stableOps)
   }

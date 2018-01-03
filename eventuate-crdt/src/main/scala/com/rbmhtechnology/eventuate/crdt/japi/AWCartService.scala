@@ -39,7 +39,7 @@ import scala.collection.JavaConverters._
  * @param log Event log.
  * @tparam A [[AWCart]] key type.
  */
-class ORCartService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
+class AWCartService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Map[A, Int], JMap[A, JInt]] {
 
   import CRDTConverter._

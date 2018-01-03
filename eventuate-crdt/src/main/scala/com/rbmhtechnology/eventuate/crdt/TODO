@@ -1,12 +1,50 @@
-1. CRDTServiceOps, porque necesitaba definir el tipo del CRDT. e.g. CRDTServiceOps[LWWRegister[A], Option[A]]
-   Ahora solo defini CRDTServiceOps[Option[A]], porque effect ahora devuelve un CRDT y con eso me alcanza
-
-2. Porque me tira este error en los test?
+1. Porque me tira este error en los test?
    could not find implicit value for parameter ops: com.rbmhtechnology.eventuate.crdt.CRDTServiceOps[scala.collection.immutable.Set[Int]]
    Se soluciona importando el companion object import ORSet._ donde se define implict def CRDTServiceOps,
    pero antes no se necesitaba!
 
-3. ORSet prepareRemove. I can implement this now?
+2. test PureOp NonCommutative framework
 
-4. Para que ORCart se pueda resolver en funcion de ORSet, las Operation que se guarden en el POLog tienen que "admitir duplicados" (lo que va en contra de la semantica del ORSet)
-   A menos que le pase otra funcion en pruneState que sume cuando se marcan como obsoletas
+3. test stabilization
+
+4. rename and move things
+
+5. document things
+
+6. ChaosTest fails!
+
+7. Ask Carlos
+   a) AWSet is the PureOp based ORSet?
+   b) Even more, an add operation a cannot
+      be removed despite the presence of concurrent rmv operation r (as one might think). The
+      reason is that r can become stable at any time; if it happened to be followed by a clear
+      operation, i.e., in its causal future, all stable operations in the PO-Log will be deleted, r
+      among them. Since a is not yet stable, and thus concurrent with clear, the former will
+      stay in the PO-Log. This breaks the remove-wins semantics since r and a were originally
+      concurrent and hence r should win. These reasons lead to a more complex stabilize function
+      (explained next) that is in charge of removing the extra operations that were not safe to be
+      removed previously through R or R _ .
+
+      Doesn't make sense to me
+   c) EWFlag is just an AWSet where we can only add/rmv a single fixed element. Example: 1
+      It would only make sense if it could return (enabled,disabled,unset)
+      but it only contains Enable so we could not differentiate between disabled an unset.
+
+8. RWSet, EWFlag
+
+9. Test stabilization in LWWRegister (stable ops doesn't contain metadata anymore, i.e. systemTimestap and creator)
+   Where this metadata could be contained? Something else instead of Versioned?
+   Something like Operation(timestamp:VectorTime,payload: Any,metadata:Any)
+
+
+10. This PO-Log split allows actual implementations, tailored to specific datatypes
+    to achieve further improvements. As an example, an or-set will have only (t, [add, v])
+    entries in its PO-Log (except for the singleton {(t, [rmv, v]}) which can be pre-
+    vented by a special rule); when elements become causally stable, only the value
+    v needs to be migrated and not the operation name. The set component of the
+    split PO-Log becomes a plain set of values (and not lists of operation-argument),
+    allowing traditional implementations of sets to be used, for example a bitmap if
+    the datatype is for a dense set of integers. (Such implementations will need spe-
+    cialized versions of effect to avoid the implicit traversal of the set when applying
+    obsolete, but that is something desirable in any actual implementation.)
+    Making pure op based

@@ -68,7 +68,7 @@ class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit va
     op(id, AssignOp(value))
 
   def clear(id: String): Future[Set[A]] =
-    op(id, Clear) // TODO untested!
+    op(id, Clear)
 
   start()
 }

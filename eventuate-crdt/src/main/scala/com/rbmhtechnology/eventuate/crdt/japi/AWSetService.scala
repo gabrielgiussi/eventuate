@@ -27,14 +27,14 @@ import scala.collection.JavaConverters._
 import scala.collection.immutable.Set
 
 /**
- * Java API of a replicated [[ORSetService]] CRDT service.
+ * Java API of a replicated [[AWSetService]] CRDT service.
  *
  * @param serviceId Unique id of this service.
  * @param log Event log.
  * @param system Actor system.
- * @tparam A [[ORSetService]] entry type.
+ * @tparam A [[AWSetService]] entry type.
  */
-class ORSetService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
+class AWSetService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Set[A], JSet[A]] {
 
   import CRDTConverter._
