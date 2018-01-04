@@ -110,7 +110,7 @@ private class CRDTServiceSettings(config: Config) {
  * Replication is based on the replicated event `log` that preserves causal ordering
  * of events.
  *
- * //@tparam A CRDT type
+ * @tparam A CRDT type
  * @tparam B CRDT value type
  */
 //trait CRDTService[A <: CRDT[B] with CRDTHelper[B, A], B] {
@@ -190,6 +190,7 @@ trait CRDTService[A, B] {
     w.ask(Update(id, operation)).mapTo[UpdateReply].map(_.value)(d)
   }
 
+  // FIXME type parameter R defined in method withManagerAndDispatcher shadows type R defined in package object CRDTTypes. You may want to rename your type parameter, or possibly remove it.
   private def withManagerAndDispatcher[R](async: (ActorRef, ExecutionContext) => Future[R]): Future[R] = manager match {
     case None    => Future.failed(new Exception("Service not started"))
     case Some(m) => async(m, system.dispatcher)

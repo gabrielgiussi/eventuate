@@ -18,27 +18,26 @@ package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
 import com.rbmhtechnology.eventuate._
-import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedCRDT
+import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
 import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
-import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.R
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.R_
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
 
 import scala.concurrent.Future
 import scala.collection.immutable.Set
 
 object AWSet {
-  def apply(): SimpleCRDT = AWSetServiceOps.zero
 
-  implicit class ORSetCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
-    def add(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AddOp(value), vectorTime)
-    def remove(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, RemoveOp(value), vectorTime)
-    def clear(vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, Clear, vectorTime)
+  type AWSet[A] = CRDT[Set[A]]
+
+  def apply[A]: AWSet[A] = CRDT(Set.empty) // TODO we should be able to define a specific implementation of Set
+
+  implicit class AWSetCRDT[A](crdt: AWSet[A]) extends EnhancedNonCommutativeCRDT(crdt) {
+    def add(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOp[_, Set[A]]) = ops.effect(crdt, AddOp(value), vectorTime)
+    def remove(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOp[_, Set[A]]) = ops.effect(crdt, RemoveOp(value), vectorTime)
+    def clear(vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOp[_, Set[A]]) = ops.effect(crdt, Clear, vectorTime)
   }
 
-  implicit def AWSetServiceOps[A] = new CRDTNonCommutativePureOpSimple[Set[A]] {
+  implicit def AWSetServiceOps[A] = new CRDTNonCommutativePureOp[Set[A], Set[A]] {
 
     val r: R = (v, _) => v.value match {
       case _: RemoveOp => true
@@ -54,10 +53,21 @@ object AWSet {
       }
     }
 
-    override def customEval(ops: Seq[Versioned[Operation]]): Set[A] =
-      ops.filter(_.value.isInstanceOf[AddOp]).map(_.value.asInstanceOf[AddOp].entry.asInstanceOf[A]).toSet
-
     override implicit val causalRedundancy: CausalRedundancy = new CausalRedundancy(r, r0)
+
+    override def eval(crdt: AWSet[A]): Set[A] =
+      crdt.polog.log.map(_.value.asInstanceOf[AddOp].entry.asInstanceOf[A]) ++ crdt.state
+
+    override protected def stabilizeState(state: Set[A], stableOps: Seq[Operation]): Set[A] =
+      state ++ stableOps.map(_.asInstanceOf[AddOp].entry.asInstanceOf[A]).toSet
+
+    override def zero: AWSet[A] = AWSet.apply[A]
+
+    override def updateState(op: Operation, state: Set[A]): Set[A] = op match {
+      case RemoveOp(entry) => state - entry.asInstanceOf[A]
+      case Clear           => Set.empty
+      case _               => state
+    }
   }
 }
 
@@ -69,8 +79,8 @@ object AWSet {
  * @param log Event log.
  * @tparam A [[AWSet]] entry type.
  */
-class AWSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOpSimple[Set[A]])
-  extends CRDTService[SimpleCRDT, Set[A]] {
+class AWSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOp[Set[A], Set[A]])
+  extends CRDTService[AWSet[A], Set[A]] {
 
   /**
    * Adds `entry` to the OR-Set identified by `id` and returns the updated entry set.
@@ -88,6 +98,7 @@ class AWSetService[A](val serviceId: String, val log: ActorRef)(implicit val sys
     op(id, Clear)
 
   start()
+
 }
 
 /**

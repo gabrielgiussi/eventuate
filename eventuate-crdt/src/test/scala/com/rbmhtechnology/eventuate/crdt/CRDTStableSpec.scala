@@ -23,6 +23,7 @@ import org.scalatest.WordSpec
 
 class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   val crdt = CRDT.zero
+  val awSet = AWSet.apply[Int]
 
   def vt(t1: Long, t2: Long): VectorTime =
     VectorTime("p1" -> t1, "p2" -> t2)
@@ -30,16 +31,39 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   "An AWSet" should {
     import AWSet._
     "discard stable operations" in {
-      val updated = crdt
+      val updated = awSet
         .add(1, vt(1, 0))
         .add(2, vt(2, 0))
         .add(3, vt(2, 1))
         .add(4, vt(3, 1))
         .add(5, vt(3, 2))
         .stable(vt(2, 1))
-      updated.value should be(Set(1, 2, 3, 4, 5))
+      updated.value shouldBe Set(1, 2, 3, 4, 5)
       updated.polog.log.size shouldBe 2
       updated.state.size shouldBe 3
+    }
+    "remove stable values" in {
+      val updated = awSet
+        .add(1, vt(1, 0))
+        .stable(vt(1, 0))
+        .remove(1, vt(2, 0))
+      updated.value shouldBe Set()
+    }
+    "remove only stable values" in {
+      val updated = awSet
+        .add(1, vt(1, 0))
+        .add(2, vt(2, 0))
+        .remove(1, vt(2, 0))
+        .stable(vt(1, 0))
+      updated.value shouldBe Set(2)
+    }
+    "clear stable values" in {
+      val updated = awSet
+        .add(1, vt(1, 0))
+        .add(2, vt(0, 1))
+        .stable(vt(1, 0))
+        .clear(vt(2, 0))
+      updated.value shouldBe Set(2)
     }
   }
 

@@ -23,14 +23,6 @@ import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
 // set o map?
 case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat {
 
-  // TODO implict OBS
-
-  // deberia llamarse desde ops#stable. Alguna manera de restringirlo?
-  //p \ {(t,p(t))}
-  //def remove(a: Versioned[Operation]): POLog = copy(log - a)
-
-  // estos dos deberian llamarse desde ops#effect
-  // puedo poner implicit en obs?
   /**
    * when a new pair (t, o) is delivered to a replica, effect discards from the PO-Log all elements x such that obsolete(x, (t, o)) holds
    */
@@ -42,16 +34,11 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
    * in the PO-Log obsolete((t, o), x) is false
    */
   def add(op: Versioned[Operation])(implicit red: CausalRedundancy): POLog = {
-    //if ((log.isEmpty) || (log.exists { !obs(op, _) })) copy(log + op)
     // TODO check to not add twice the same VectorTime should only be for testing.
     if (!red.r(op, this)) copy(prune(log + op, red.r1(op)))
     else copy(prune(log, red.r0(op)))
-
-    //if ((log.isEmpty) || (log.forall { !obs(op, _) })) copy(log + op) // TODO review if this is ok (forall o exists?)
-    //else this
   }
 
-  // TODO Stable can be in VectorTimestamp?
   def stable(stable: VectorTime): (POLog, Seq[Operation]) = {
     val (stableOps, nonStableOps) = log.foldLeft((Seq.empty[Operation], Seq.empty[Versioned[Operation]])) {
       case ((stableOps, nonStableOps), op) if (op.vectorTimestamp.stableAt(stable)) => (stableOps :+ op.value, nonStableOps)

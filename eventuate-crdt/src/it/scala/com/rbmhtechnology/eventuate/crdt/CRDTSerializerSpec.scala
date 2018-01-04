@@ -29,11 +29,9 @@ object CRDTSerializerSpec {
     Counter[Int].update(payload, VectorTime("s" -> 17L))
   }
 
-  //def orSet(payload: ExamplePayload) = CRDT(POLog(Set(Versioned(payload, VectorTime("s" -> 17L)))), Set.empty[ExamplePayload])
-
-  def orSet(payload: ExamplePayload) = {
+  def awSet(payload: ExamplePayload) = {
     import AWSet._
-    AWSet().add(payload, VectorTime("s" -> 17L))
+    AWSet[ExamplePayload].add(payload, VectorTime("s" -> 17L))
   }
 
   def orCart(key: ExamplePayload) = {
@@ -75,7 +73,7 @@ class CRDTSerializerSpec extends WordSpec with Matchers with BeforeAndAfterAll {
     "support AWSet serialization with default payload serialization" in {
       val serialization = SerializationExtension(systems(0))
 
-      val initial = orSet(ExamplePayload("foo", "bar"))
+      val initial = awSet(ExamplePayload("foo", "bar"))
       val expected = initial
 
       serialization.deserialize(serialization.serialize(initial).get, classOf[CRDT[_]]).get should be(expected)
@@ -97,8 +95,8 @@ class CRDTSerializerSpec extends WordSpec with Matchers with BeforeAndAfterAll {
       serialization.deserialize(serialization.serialize(initial).get, classOf[AWCartEntry[_]]).get should be(expected)
     }
     "support AWSet serialization with custom payload serialization" in serializations.tail.foreach { serialization =>
-      val initial = orSet(ExamplePayload("foo", "bar"))
-      val expected = orSet(ExamplePayload("bar", "foo"))
+      val initial = awSet(ExamplePayload("foo", "bar"))
+      val expected = awSet(ExamplePayload("bar", "foo"))
 
       serialization.deserialize(serialization.serialize(initial).get, classOf[CRDT[_]]).get should be(expected)
     }

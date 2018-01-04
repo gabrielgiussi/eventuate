@@ -31,7 +31,7 @@ object CRDT {
 
   implicit class EnhancedNonCommutativeCRDT[A](crdt: CRDT[A]) extends EnhancedCRDT(crdt) {
 
-    def stable[_](stableT: VectorTime)(implicit ops: CRDTNonCommutativePureOp[_, A]) = ops.stable(crdt, stableT)
+    def stable(stableT: VectorTime)(implicit ops: CRDTNonCommutativePureOp[_, A]) = ops.stable(crdt, stableT)
 
   }
 
@@ -40,31 +40,32 @@ object CRDT {
   def zero: CRDT[Seq[Operation]] = CRDT(POLog(), Seq.empty)
 }
 
-case class CRDT[B](polog: POLog, state: B) extends CRDTFormat {
+case class CRDT[B](polog: POLog, state: B) extends CRDTFormat
 
-  // TODO here or in POLog?
-  def addOp(op: Operation, timestamp: VectorTime, systemTimestamp: Long = 0L, creator: String = "")(implicit red: CausalRedundancy) = {
-    val versionedOp = Versioned(op, timestamp, systemTimestamp, creator)
-    copy(polog = polog.add(versionedOp))
-  }
-}
-
+// FIXME switch types
 trait CRDTNonCommutativePureOp[B, C] extends CRDTServiceOps[CRDT[C], B] {
 
   implicit def causalRedundancy: CausalRedundancy
 
-  def effect(crdt: CRDT[C], op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): CRDT[C] =
-    crdt.addOp(op, vt, systemTimestamp, creator)
+  def updateState(op: Operation, state: C): C
+
+  def effect(crdt: CRDT[C], op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): CRDT[C] = {
+    val versionedOp = Versioned(op, vt, systemTimestamp, creator)
+    val updatedPolog = crdt.polog.add(versionedOp)
+    val updatedState = updateState(op, crdt.state)
+    crdt.copy(updatedPolog, updatedState)
+  }
 
   override def eval(crdt: CRDT[C]): B
 
   protected def stabilize(polog: POLog, stable: VectorTime): POLog = polog
 
-  protected def stableOps(crdt: CRDT[C], stableOps: Seq[Operation]): CRDT[C]
+  protected def stabilizeState(state: C, stableOps: Seq[Operation]): C
 
   protected[crdt] def stable(crdt: CRDT[C], stable: VectorTime) = {
-    val (stabilizedPOLog, _stableOps) = stabilize(crdt.polog, stable) stable (stable)
-    stableOps(crdt.copy(polog = stabilizedPOLog), _stableOps)
+    val (stabilizedPOLog, stableOps) = stabilize(crdt.polog, stable) stable (stable)
+    val stabilizedState = stabilizeState(crdt.state, stableOps)
+    crdt.copy(stabilizedPOLog, stabilizedState)
   }
 
 }
@@ -73,8 +74,7 @@ trait CRDTNonCommutativePureOpSimple[B] extends CRDTNonCommutativePureOp[B, Seq[
 
   final override def zero: CRDT[Seq[Operation]] = CRDT.zero
 
-  override protected def stableOps(crdt: CRDT[Seq[Operation]], stableOps: Seq[Operation]): CRDT[Seq[Operation]] =
-    crdt.copy(state = crdt.state ++ stableOps)
+  override protected def stabilizeState(state: Seq[Operation], stableOps: Seq[Operation]): Seq[Operation] = state ++ stableOps
 
   override def eval(crdt: CRDT[Seq[Operation]]): B = {
     val stableOps = crdt.state.map(op => Versioned(op, VectorTime.Zero))

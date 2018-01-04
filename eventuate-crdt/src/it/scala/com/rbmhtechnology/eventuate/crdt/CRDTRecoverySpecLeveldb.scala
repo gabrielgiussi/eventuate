@@ -19,6 +19,7 @@ package com.rbmhtechnology.eventuate.crdt
 import akka.actor._
 import akka.testkit._
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
 import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.utilities._
@@ -29,7 +30,7 @@ class CRDTRecoverySpecLeveldb extends TestKit(ActorSystem("test")) with WordSpec
   var probe: TestProbe = _
 
   def service(serviceId: String) = new AWSetService[Int](serviceId, log)(system, AWSet.AWSetServiceOps) { // FIXME not needed before
-    override def onChange(crdt: SimpleCRDT, operation: Option[Operation]): Unit = probe.ref ! crdt.value
+    override def onChange(crdt: AWSet[Int], operation: Option[Operation]): Unit = probe.ref ! crdt.value
   }
 
   override def beforeEach(): Unit = {

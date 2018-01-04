@@ -48,3 +48,10 @@
     cialized versions of effect to avoid the implicit traversal of the set when applying
     obsolete, but that is something desirable in any actual implementation.)
     Making pure op based
+
+11. Restrict the access to POLog and state, and method like addOp
+
+12. The PureOp framework doesn't lack a pruneState or updateState?
+    In the framework, the AWSet bug doesn't happen because the prune of the POLOG should
+    discard stable operatios (with VectorTime = zero). I could do that, but then the framework will be restricted
+    to a state made of stable ops, and not a specific set for example.

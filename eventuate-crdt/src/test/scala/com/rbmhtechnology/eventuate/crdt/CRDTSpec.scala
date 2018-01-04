@@ -17,12 +17,11 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import com.rbmhtechnology.eventuate.VectorTime
-
 import org.scalatest._
 
 class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   val counter = Counter.apply[Int]
-  val awSet = AWSet.apply
+  val awSet = AWSet.apply[Int]
   val mvReg = MVRegister.apply
   val lwwReg = LWWRegister.apply
   val awShoppingCart = AWCart.apply
