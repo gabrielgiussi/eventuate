@@ -5,13 +5,7 @@
 
 2. test PureOp NonCommutative framework
 
-3. test stabilization
-
-4. rename and move things
-
 5. document things
-
-6. ChaosTest fails!
 
 7. Ask Carlos
    a) AWSet is the PureOp based ORSet?
@@ -30,24 +24,9 @@
       It would only make sense if it could return (enabled,disabled,unset)
       but it only contains Enable so we could not differentiate between disabled an unset.
 
+    d) Can add quotes to eventuate source code?
+
 8. RWSet, EWFlag
-
-9. Test stabilization in LWWRegister (stable ops doesn't contain metadata anymore, i.e. systemTimestap and creator)
-   Where this metadata could be contained? Something else instead of Versioned?
-   Something like Operation(timestamp:VectorTime,payload: Any,metadata:Any)
-
-
-10. This PO-Log split allows actual implementations, tailored to specific datatypes
-    to achieve further improvements. As an example, an or-set will have only (t, [add, v])
-    entries in its PO-Log (except for the singleton {(t, [rmv, v]}) which can be pre-
-    vented by a special rule); when elements become causally stable, only the value
-    v needs to be migrated and not the operation name. The set component of the
-    split PO-Log becomes a plain set of values (and not lists of operation-argument),
-    allowing traditional implementations of sets to be used, for example a bitmap if
-    the datatype is for a dense set of integers. (Such implementations will need spe-
-    cialized versions of effect to avoid the implicit traversal of the set when applying
-    obsolete, but that is something desirable in any actual implementation.)
-    Making pure op based
 
 11. Restrict the access to POLog and state, and method like addOp
 
@@ -55,3 +34,19 @@
     In the framework, the AWSet bug doesn't happen because the prune of the POLOG should
     discard stable operatios (with VectorTime = zero). I could do that, but then the framework will be restricted
     to a state made of stable ops, and not a specific set for example.
+
+13. FIX ChaosTestSpec
+
+14. Control in test that we don't try to add twice
+the same VectorTime, or add VectorTime concurrent to those that we mark as stable
+
+15. Review The serialization of the CRDT State
+
+16. FIX the need of import the object that contains the ops def for instantiate the service (before this wasn't needed)
+
+17. FIX the need of this two imports in tests
+    import TPSet._
+    import CRDTUtils.TPSetCRDT
+
+18. Fix the need of specify the ops in ReplicatedAWSetSpec
+    new AWSetService[Int]("A", endpoint.log)(system, AWSet.AWSetServiceOps)

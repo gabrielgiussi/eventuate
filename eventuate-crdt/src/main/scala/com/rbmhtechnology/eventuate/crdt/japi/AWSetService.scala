@@ -19,7 +19,8 @@ package com.rbmhtechnology.eventuate.crdt.japi
 import java.util.concurrent.CompletionStage
 import java.util.{ Set => JSet }
 
-import akka.actor.{ ActorRef, ActorSystem }
+import akka.actor.ActorRef
+import akka.actor.ActorSystem
 import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
 
 import scala.collection.JavaConverters._
@@ -37,8 +38,8 @@ class AWSetService[A](val serviceId: String, val log: ActorRef, implicit val sys
   extends CRDTService[AWSet[A], Set[A], JSet[A]] {
 
   import CRDTConverter._
-  import system._
   import com.rbmhtechnology.eventuate.crdt.AWSet._
+  import system._
 
   override protected val delegate =
     new com.rbmhtechnology.eventuate.crdt.AWSetService[A](serviceId, log)

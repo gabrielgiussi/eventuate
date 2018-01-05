@@ -18,8 +18,6 @@ package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
 import com.rbmhtechnology.eventuate._
-import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
-import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
 
 import scala.concurrent.Future
@@ -34,16 +32,9 @@ import scala.concurrent.Future
 case class AWCartEntry[A](key: A, quantity: Int) extends CRDTFormat
 
 object AWCart {
-  def apply(): SimpleCRDT = ORCartServiceOps.zero
+  def apply(): SimpleCRDT = AWCartServiceOps.zero
 
-  implicit class AWCartCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
-
-    def add(key: A, quantity: Int, timestamp: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AddOp(AWCartEntry(key, quantity)), timestamp)
-    def remove(key: A, t: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, RemoveOp(key), t)
-    def clear(t: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, Clear, t)
-  }
-
-  implicit def ORCartServiceOps[A] = new CRDTNonCommutativePureOpSimple[Map[A, Int]] {
+  implicit def AWCartServiceOps[A] = new CvRDTPureOpSimple[Map[A, Int]] {
 
     override def customEval(ops: Seq[Versioned[Operation]]): Map[A, Int] = ops.foldLeft(Map.empty[A, Int]) {
       case (acc, Versioned(AddOp(AWCartEntry(key: A, quantity)), _, _, _)) => acc.get(key) match {
@@ -53,13 +44,13 @@ object AWCart {
       case (acc, Versioned(RemoveOp(_), _, _, _)) => acc
     }
 
-    val r: R = (v, _) => v.value match {
+    val r: Redundancy = (v, _) => v.value match {
       case _: RemoveOp => true
       case Clear       => true
       case _           => false
     }
 
-    val r0: R_ = newOp => op => {
+    val r0: Redundancy_ = newOp => op => {
       ((op.vectorTimestamp, op.value), (newOp.vectorTimestamp, newOp.value)) match {
         case ((t1, AddOp(AWCartEntry(k1, _))), (t2, RemoveOp(k2))) => (t1 < t2) && (k1 equals k2)
         case ((t1, AddOp(_)), (t2, Clear)) => (t1 < t2)
@@ -90,7 +81,7 @@ object AWCart {
  * @param log       Event log.
  * @tparam A [[AWCart]] key type.
  */
-class AWCartService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOpSimple[Map[A, Int]])
+class AWCartService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CvRDTPureOpSimple[Map[A, Int]])
   extends CRDTService[SimpleCRDT, Map[A, Int]] {
 
   /**

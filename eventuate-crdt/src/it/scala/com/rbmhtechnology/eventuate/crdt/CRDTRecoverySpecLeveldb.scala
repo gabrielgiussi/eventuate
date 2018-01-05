@@ -20,12 +20,13 @@ import akka.actor._
 import akka.testkit._
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
-import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.utilities._
 import org.scalatest._
 
 class CRDTRecoverySpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecLike with Matchers with SingleLocationSpecLeveldb {
+
+  import CRDTUtils.AWSetCRDT
 
   var probe: TestProbe = _
 

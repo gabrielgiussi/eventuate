@@ -16,8 +16,6 @@
 
 package com.rbmhtechnology.eventuate.crdt
 
-import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Obsolete
 import org.scalatest.{ BeforeAndAfterEach, Matchers, WordSpec }
 
 class CRDTOpBasedSpec extends WordSpec with Matchers with BeforeAndAfterEach {

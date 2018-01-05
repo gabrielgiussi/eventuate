@@ -16,34 +16,12 @@
 
 package com.rbmhtechnology.eventuate.crdt
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
-import com.rbmhtechnology.eventuate.{ DurableEvent, VectorTime, Versioned }
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
+import com.rbmhtechnology.eventuate.VectorTime
+import com.rbmhtechnology.eventuate.Versioned
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 
-object CRDT {
-
-  type SimpleCRDT = CRDT[Seq[Operation]]
-
-  implicit class EnhancedCRDT[A](crdt: A) {
-    def eval[B](implicit ops: CRDTServiceOps[A, B]): B = ops.eval(crdt)
-
-    def value[B](implicit ops: CRDTServiceOps[A, B]): B = eval(ops)
-  }
-
-  implicit class EnhancedNonCommutativeCRDT[A](crdt: CRDT[A]) extends EnhancedCRDT(crdt) {
-
-    def stable(stableT: VectorTime)(implicit ops: CRDTNonCommutativePureOp[_, A]) = ops.stable(crdt, stableT)
-
-  }
-
-  def apply[A](state: A): CRDT[A] = CRDT(POLog(), state)
-
-  def zero: CRDT[Seq[Operation]] = CRDT(POLog(), Seq.empty)
-}
-
-case class CRDT[B](polog: POLog, state: B) extends CRDTFormat
-
-// FIXME switch types
-trait CRDTNonCommutativePureOp[B, C] extends CRDTServiceOps[CRDT[C], B] {
+trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
 
   implicit def causalRedundancy: CausalRedundancy
 
@@ -62,7 +40,7 @@ trait CRDTNonCommutativePureOp[B, C] extends CRDTServiceOps[CRDT[C], B] {
 
   protected def stabilizeState(state: C, stableOps: Seq[Operation]): C
 
-  protected[crdt] def stable(crdt: CRDT[C], stable: VectorTime) = {
+  override def stable(crdt: CRDT[C], stable: VectorTime) = {
     val (stabilizedPOLog, stableOps) = stabilize(crdt.polog, stable) stable (stable)
     val stabilizedState = stabilizeState(crdt.state, stableOps)
     crdt.copy(stabilizedPOLog, stabilizedState)
@@ -70,13 +48,13 @@ trait CRDTNonCommutativePureOp[B, C] extends CRDTServiceOps[CRDT[C], B] {
 
 }
 
-trait CRDTNonCommutativePureOpSimple[B] extends CRDTNonCommutativePureOp[B, Seq[Operation]] {
+trait CvRDTPureOpSimple[B] extends CvRDTPureOp[Seq[Operation], B] {
 
-  final override def zero: CRDT[Seq[Operation]] = CRDT.zero
+  final override def zero: SimpleCRDT = CRDT.zero
 
   override protected def stabilizeState(state: Seq[Operation], stableOps: Seq[Operation]): Seq[Operation] = state ++ stableOps
 
-  override def eval(crdt: CRDT[Seq[Operation]]): B = {
+  override def eval(crdt: SimpleCRDT): B = {
     val stableOps = crdt.state.map(op => Versioned(op, VectorTime.Zero))
     customEval(stableOps ++ crdt.polog.log)
   }

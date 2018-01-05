@@ -17,19 +17,12 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
-import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedCRDT
-import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
+import com.rbmhtechnology.eventuate.VectorTime
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 
 import scala.concurrent.Future
 
 object Counter {
-
-  implicit class CounterCRDT[A: Integral](crdt: A) extends EnhancedCRDT(crdt) {
-
-    def update(delta: A, vt: VectorTime)(implicit ops: CRDTServiceOps[A, A]) = ops.effect(crdt, UpdateOp(delta), vt)
-
-  }
 
   def apply[A: Integral]: A = implicitly[Integral[A]].zero
 

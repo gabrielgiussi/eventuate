@@ -32,6 +32,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
 
   "A Counter" must {
     import Counter._
+    import CRDTUtils.CounterCRDT._
     "have a default value 0" in {
       counter.value shouldBe 0
     }
@@ -59,8 +60,10 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .value shouldBe -2
     }
   }
+
   "An AWSet" must {
     import AWSet._
+    import CRDTUtils.AWSetCRDT
     "be empty by default" in {
       awSet.value should be('empty)
     }
@@ -131,6 +134,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   }
   "An MVRegister" must {
     import MVRegister._
+    import CRDTUtils.MVRegisterCRDT
     "not have set a value by default" in {
       mvReg.value should be('empty)
     }
@@ -174,6 +178,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   }
   "An LWWRegister" must {
     import LWWRegister._
+    import CRDTUtils.LWWRegisterCRDT
     "not have a value by default" in {
       lwwReg.value should be('empty)
     }
@@ -232,6 +237,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   }
   "An AWCart" must {
     import AWCart._
+    import CRDTUtils.AWCartCRDT
     "be empty by default" in {
       awShoppingCart.value should be('empty)
     }
@@ -287,7 +293,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
     }
     "remove all entries in the causal past after a clear" in {
       awShoppingCart
-        .add("a", 1, vt(1, 0))
+        .add("a", 1, vt(1, 0))(AWCartServiceOps)
         .add("b", 2, vt(0, 1))
         .add("a", 1, vt(2, 0))
         .clear(vt(1, 2))
@@ -298,6 +304,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
 
   "A TPSet" must {
     import TPSet._
+    import CRDTUtils.TPSetCRDT
     "be empty by default" in {
       tpSet.value shouldBe Set.empty
     }
@@ -336,8 +343,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .add(1, vt(1, 0))
         .remove(1, vt(0, 1))
         .value should be(Set())
-    }
-    "commute2" in {
+
       tpSet
         .remove(1, vt(0, 1))
         .add(1, vt(1, 0))

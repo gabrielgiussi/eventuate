@@ -16,24 +16,13 @@
 
 package com.rbmhtechnology.eventuate.crdt
 
-import com.rbmhtechnology.eventuate.Versioned
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 
-object CRDTTypes {
+object CRDT {
 
-  //type PruneState[A] = (Operation, A, Obsolete) => A
+  def apply[A](state: A): CRDT[A] = CRDT(POLog(), state)
 
-  //type UpdateState[A] = (A, Versioned[Operation]) => A
-
-  type Operation = Any
-
-  type Redundancy = (Versioned[Operation], POLog) => Boolean
-
-  type Redundancy_ = Versioned[Operation] => Versioned[Operation] => Boolean
-
-  case class CausalRedundancy(r: Redundancy, r0: Redundancy_, r1: Redundancy_) {
-    def this(r: Redundancy, r0: Redundancy_) = this(r, r0, r0)
-  }
-
-  type SimpleCRDT = CRDT[Seq[Operation]]
-
+  def zero: CRDT[Seq[Operation]] = CRDT(POLog(), Seq.empty)
 }
+
+case class CRDT[B](polog: POLog, state: B) extends CRDTFormat

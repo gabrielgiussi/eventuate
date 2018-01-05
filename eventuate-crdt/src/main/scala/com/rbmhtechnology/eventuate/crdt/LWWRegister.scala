@@ -19,23 +19,17 @@ package com.rbmhtechnology.eventuate.crdt
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import com.rbmhtechnology.eventuate._
-import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
-import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.R
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.R_
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Redundancy
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Redundancy_
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 
 import scala.concurrent.Future
 
 object LWWRegister {
 
   def apply(): SimpleCRDT = LWWRegisterServiceOps.zero
-
-  implicit class LWWRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT(crdt) {
-    def assign(value: A, vectorTime: VectorTime, timestamp: Long, creator: String)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, AssignOp(value), vectorTime, timestamp, creator)
-    def clear(vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOpSimple[_]) = ops.effect(crdt, Clear, vectorTime)
-  }
 
   implicit def LWWOrdering[A] = new Ordering[Versioned[_]] {
     override def compare(x: Versioned[_], y: Versioned[_]): Int =
@@ -45,7 +39,7 @@ object LWWRegister {
         x.systemTimestamp.compareTo(y.systemTimestamp)
   }
 
-  implicit def LWWRegisterServiceOps[A] = new CRDTNonCommutativePureOpSimple[Option[A]] {
+  implicit def LWWRegisterServiceOps[A] = new CvRDTPureOpSimple[Option[A]] {
 
     override def precondition: Boolean =
       false
@@ -53,9 +47,9 @@ object LWWRegister {
     override def customEval(ops: Seq[Versioned[Operation]]): Option[A] =
       ops.sorted(LWWRegister.LWWOrdering[A]).lastOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A])
 
-    val r: R = (op, _) => op.value equals Clear
+    val r: Redundancy = (op, _) => op.value equals Clear
 
-    val r0: R_ = newOp => op => op.vectorTimestamp < newOp.vectorTimestamp
+    val r0: Redundancy_ = newOp => op => op.vectorTimestamp < newOp.vectorTimestamp
 
     override implicit val causalRedundancy: CausalRedundancy = new CausalRedundancy(r, r0)
 
@@ -75,7 +69,7 @@ object LWWRegister {
  * @param log Event log.
  * @tparam A [[LWWRegister]] value type.
  */
-class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOpSimple[Option[A]])
+class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CvRDTPureOpSimple[Option[A]])
   extends CRDTService[SimpleCRDT, Option[A]] {
 
   /**

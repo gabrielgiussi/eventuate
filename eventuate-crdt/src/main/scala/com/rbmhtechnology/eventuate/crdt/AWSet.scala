@@ -17,13 +17,11 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
-import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
-import com.rbmhtechnology.eventuate.crdt.CRDT.EnhancedNonCommutativeCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
 
-import scala.concurrent.Future
 import scala.collection.immutable.Set
+import scala.concurrent.Future
 
 object AWSet {
 
@@ -31,21 +29,15 @@ object AWSet {
 
   def apply[A]: AWSet[A] = CRDT(Set.empty) // TODO we should be able to define a specific implementation of Set
 
-  implicit class AWSetCRDT[A](crdt: AWSet[A]) extends EnhancedNonCommutativeCRDT(crdt) {
-    def add(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOp[_, Set[A]]) = ops.effect(crdt, AddOp(value), vectorTime)
-    def remove(value: A, vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOp[_, Set[A]]) = ops.effect(crdt, RemoveOp(value), vectorTime)
-    def clear(vectorTime: VectorTime)(implicit ops: CRDTNonCommutativePureOp[_, Set[A]]) = ops.effect(crdt, Clear, vectorTime)
-  }
+  implicit def AWSetServiceOps[A] = new CvRDTPureOp[Set[A], Set[A]] {
 
-  implicit def AWSetServiceOps[A] = new CRDTNonCommutativePureOp[Set[A], Set[A]] {
-
-    val r: R = (v, _) => v.value match {
+    val r: Redundancy = (v, _) => v.value match {
       case _: RemoveOp => true
       case Clear       => true
       case _           => false
     }
 
-    val r0: R_ = newOp => op => {
+    val r0: Redundancy_ = newOp => op => {
       ((op.vectorTimestamp, op.value), (newOp.vectorTimestamp, newOp.value)) match {
         case ((t1, AddOp(v1)), (t2, AddOp(v2)))    => (t1 < t2) && (v1 equals v2)
         case ((t1, AddOp(v1)), (t2, RemoveOp(v2))) => (t1 < t2) && (v1 equals v2)
@@ -79,7 +71,7 @@ object AWSet {
  * @param log Event log.
  * @tparam A [[AWSet]] entry type.
  */
-class AWSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTNonCommutativePureOp[Set[A], Set[A]])
+class AWSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CvRDTPureOp[Set[A], Set[A]])
   extends CRDTService[AWSet[A], Set[A]] {
 
   /**
@@ -109,6 +101,6 @@ case class AddOp(entry: Any) extends CRDTFormat
 /**
  * Persistent remove operation used for [[AWSet]] and [[AWCart]].
  */
-case class RemoveOp(entry: Any) extends CRDTFormat // FIXME timestamp needed?
+case class RemoveOp(entry: Any) extends CRDTFormat
 
 case object Clear extends CRDTFormat

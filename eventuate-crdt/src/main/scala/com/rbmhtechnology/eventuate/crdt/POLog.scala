@@ -17,8 +17,9 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.{ Obsolete, Operation }
-import com.rbmhtechnology.eventuate.{ VectorTime, Versioned }
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
+import com.rbmhtechnology.eventuate.VectorTime
+import com.rbmhtechnology.eventuate.Versioned
 
 // set o map?
 case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat {
@@ -26,7 +27,7 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
   /**
    * when a new pair (t, o) is delivered to a replica, effect discards from the PO-Log all elements x such that obsolete(x, (t, o)) holds
    */
-  private def prune(ops: Set[Versioned[Operation]], r: Versioned[Operation] => Boolean) = ops filter (!r(_)) // TODO review if this is ok
+  private def prune(ops: Set[Versioned[Operation]], r: Versioned[Operation] => Boolean) = ops filter (!r(_))
 
   /**
    * the delivered pair (t, o) is only inserted into the PO-Log if it is not
@@ -34,7 +35,6 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
    * in the PO-Log obsolete((t, o), x) is false
    */
   def add(op: Versioned[Operation])(implicit red: CausalRedundancy): POLog = {
-    // TODO check to not add twice the same VectorTime should only be for testing.
     if (!red.r(op, this)) copy(prune(log + op, red.r1(op)))
     else copy(prune(log, red.r0(op)))
   }

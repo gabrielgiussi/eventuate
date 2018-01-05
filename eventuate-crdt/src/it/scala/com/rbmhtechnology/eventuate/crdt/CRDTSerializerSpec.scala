@@ -26,16 +26,19 @@ import org.scalatest._
 object CRDTSerializerSpec {
   def counter(payload: Int) = {
     import Counter._
+    import CRDTUtils.CounterCRDT._
     Counter[Int].update(payload, VectorTime("s" -> 17L))
   }
 
   def awSet(payload: ExamplePayload) = {
     import AWSet._
+    import CRDTUtils.AWSetCRDT
     AWSet[ExamplePayload].add(payload, VectorTime("s" -> 17L))
   }
 
   def orCart(key: ExamplePayload) = {
     import AWCart._
+    import CRDTUtils.AWCartCRDT
     AWCart().add(key, 3, VectorTime("s" -> 17L))
   }
 
@@ -44,11 +47,13 @@ object CRDTSerializerSpec {
 
   def mvRegister(payload: ExamplePayload) = {
     import MVRegister._
-    MVRegister().assign(payload, VectorTime("s" -> 18L), 18, "e1")
+    import CRDTUtils.MVRegisterCRDT
+    MVRegister().assign(payload, VectorTime("s" -> 18L))
   }
 
   def lwwRegister(payload: ExamplePayload) = {
     import LWWRegister._
+    import CRDTUtils.LWWRegisterCRDT
     LWWRegister().assign(payload, VectorTime("s" -> 19L), 19, "e2")
   }
 

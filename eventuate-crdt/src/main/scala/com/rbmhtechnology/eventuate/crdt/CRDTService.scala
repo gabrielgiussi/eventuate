@@ -37,7 +37,6 @@ import scala.util._
  * @tparam A CRDT type
  * @tparam B CRDT value type
  */
-//trait CRDTServiceOps[A <: CRDT[B] with CRDTHelper[B, A], B] {
 trait CRDTServiceOps[A, B] {
 
   /**
@@ -71,22 +70,10 @@ trait CRDTServiceOps[A, B] {
   //def effect(crdt: A, operation: Any, event: DurableEvent): A
   def effect(crdt: A, op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): A
 
-  /*
-  final def stable(crdt: CRDTSPI[B], t: VectorTime): CRDTSPI[B] = {
-    // TODO Aca tengo que buscar todas operaciones que son stables en vectortime
-    crdt.stable(t)
-  }
-*/
-  //  val eval: Eval[B]
+  def stable(crdt: A, stable: VectorTime) = crdt
 
-  /*val obs: Obsolete
-
-  val pruneState: PruneState[B]
-
-  implicit val updateState: UpdateState[B]
-*/
   /** For testing purposes only */
-  //def timestamps(crdt: CRDTSPI[B]): Set[VectorTime] = crdt.polog.log.map(_.vectorTimestamp)
+  //TODO def timestamps(crdt: CRDTSPI[B]): Set[VectorTime] = crdt.polog.log.map(_.vectorTimestamp)
 }
 
 object CRDTService {
@@ -113,7 +100,6 @@ private class CRDTServiceSettings(config: Config) {
  * @tparam A CRDT type
  * @tparam B CRDT value type
  */
-//trait CRDTService[A <: CRDT[B] with CRDTHelper[B, A], B] {
 trait CRDTService[A, B] {
   import CRDTService._
 
@@ -190,7 +176,6 @@ trait CRDTService[A, B] {
     w.ask(Update(id, operation)).mapTo[UpdateReply].map(_.value)(d)
   }
 
-  // FIXME type parameter R defined in method withManagerAndDispatcher shadows type R defined in package object CRDTTypes. You may want to rename your type parameter, or possibly remove it.
   private def withManagerAndDispatcher[R](async: (ActorRef, ExecutionContext) => Future[R]): Future[R] = manager match {
     case None    => Future.failed(new Exception("Service not started"))
     case Some(m) => async(m, system.dispatcher)

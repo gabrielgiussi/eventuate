@@ -96,6 +96,7 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private def crdt(crdtFormat: CRDTPureOpFormat): CRDT[_] =
     CRDT(polog(crdtFormat.getPolog), deserializeState(crdtFormat.getState))
 
+  // TODO review this.
   def serializeState(state: Any): ByteString = {
     val stream = new ByteArrayOutputStream()
     val oos = new ObjectOutputStream(stream)
@@ -151,7 +152,6 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private def addOpFormatBuilder(op: AddOp): AddOpFormat.Builder =
     AddOpFormat.newBuilder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
 
-  // TODO remove timestamps if no longer needed
   private def removeOpFormatBuilder(op: RemoveOp): RemoveOpFormat.Builder =
     RemoveOpFormat.newBuilder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
 

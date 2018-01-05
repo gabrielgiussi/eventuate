@@ -30,6 +30,7 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
 
   "An AWSet" should {
     import AWSet._
+    import CRDTUtils.AWSetCRDT
     "discard stable operations" in {
       val updated = awSet
         .add(1, vt(1, 0))
@@ -69,6 +70,7 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
 
   "A MVRegister" should {
     import MVRegister._
+    import CRDTUtils.MVRegisterCRDT
     "discard stable operations" in {
       val updated = crdt
         .assign(1, vt(1, 0))
@@ -82,6 +84,7 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
 
   "A LWWRegister" should {
     import LWWRegister._
+    import CRDTUtils.LWWRegisterCRDT
     "discard stable operations" in {
       val updated = crdt
         .assign(1, vt(1, 0), 0, "emitter1")
@@ -92,10 +95,27 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
       updated.polog.log.size shouldBe 1
       updated.state.size shouldBe 1
     }
+    "clear stable operations (to fix)" in {
+      crdt
+        .assign(1, vt(1, 0), 0, "emitter1")
+        .assign(2, vt(0, 1), 1, "emitter2")
+        .stable(vt(0, 1))
+        .clear(vt(2, 0)) // TODO is ok this test to fail because i'm adding a ClearOP || to (0,1) and this should not happen
+        .value shouldBe Some(1)
+    }
+    "clear stable operations" in {
+      crdt
+        .assign(1, vt(1, 0), 0, "emitter1")
+        .assign(2, vt(0, 1), 1, "emitter2")
+        .stable(vt(0, 1))
+        .clear(vt(0, 2))
+        .value shouldBe Some(1)
+    }
   }
 
   "An AWCart" should {
     import AWCart._
+    import CRDTUtils.AWCartCRDT
     "discard stable operations" in {
       val updated = crdt
         .add("a", 1, vt(1, 0))

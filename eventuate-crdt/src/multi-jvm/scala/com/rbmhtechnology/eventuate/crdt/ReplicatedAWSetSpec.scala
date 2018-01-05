@@ -46,13 +46,14 @@ object ReplicatedORSetConfig extends MultiNodeReplicationConfig {
 
 abstract class ReplicatedAWSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) with MultiNodeWordSpec with MultiNodeReplicationEndpoint {
   import ReplicatedORSetConfig._
+  import CRDTUtils.AWSetCRDT
 
   def initialParticipants: Int =
     roles.size
 
   muteDeadLetters(classOf[AnyRef])(system)
 
-  "A replicated ORSet" must {
+  "A replicated AWSet" must {
     "converge" in {
       val probe = TestProbe()
 

@@ -23,7 +23,6 @@ import akka.actor.Props
 import akka.testkit.TestProbe
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
-import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.CRDTService.ValueUpdated
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.log._
@@ -44,6 +43,7 @@ object CRDTChaosSpecLeveldb {
 class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpecLeveldb {
   import ReplicationIntegrationSpec.replicationConnection
   import CRDTChaosSpecLeveldb._
+  import CRDTUtils.AWSetCRDT
 
   class TestEventLog(id: String) extends LeveldbEventLog(id, "log-test") {
     override def write(events: Seq[DurableEvent], partition: Long, clock: EventLogClock): Unit =

@@ -20,8 +20,8 @@ import java.util.concurrent.CompletionStage
 import java.util.{ Set => JSet }
 
 import akka.actor.{ ActorRef, ActorSystem }
-import com.rbmhtechnology.eventuate.crdt.CRDT.SimpleCRDT
-import com.rbmhtechnology.eventuate.crdt.{ CRDT, MVRegister }
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
+import com.rbmhtechnology.eventuate.crdt.MVRegister
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Set
