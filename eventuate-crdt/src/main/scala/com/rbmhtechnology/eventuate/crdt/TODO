@@ -37,16 +37,22 @@
 
 13. FIX ChaosTestSpec
 
-14. Control in test that we don't try to add twice
-the same VectorTime, or add VectorTime concurrent to those that we mark as stable
-
-15. Review The serialization of the CRDT State
-
 16. FIX the need of import the object that contains the ops def for instantiate the service (before this wasn't needed)
 
 17. FIX the need of this two imports in tests
     import TPSet._
     import CRDTUtils.TPSetCRDT
+    (related to 16)
 
 18. Fix the need of specify the ops in ReplicatedAWSetSpec
     new AWSetService[Int]("A", endpoint.log)(system, AWSet.AWSetServiceOps)
+    (related to 16 and 17)
+
+
+COMMENT IN THE PR
+15. We should be able to define specific state serialization for custom crdt like AWSet
+   (supposing this represent an improvement in performance)
+   For be able to do this, I should create the class AWSet (but I can't extend case class)
+   So i guess i would have to include an optional type in the CRDT case class to apply
+   pattern matching in the CRDTSerializer
+   Unless I apply pattern matching over the state directly!

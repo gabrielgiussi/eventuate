@@ -16,11 +16,8 @@
 
 package com.rbmhtechnology.eventuate.crdt
 
-import java.io.{ ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream }
-
 import akka.actor._
 import akka.serialization.Serializer
-import com.google.protobuf.ByteString
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDTFormats._
 import com.rbmhtechnology.eventuate.crdt.CRDTService._
@@ -83,33 +80,38 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
       case RemoveOpClass =>
         removeOp(RemoveOpFormat.parseFrom(bytes))
       case AWCartEntryClass =>
-        orCartEntry(AWCartEntryFormat.parseFrom(bytes))
+        awCartEntry(AWCartEntryFormat.parseFrom(bytes))
       case ClearClass => Clear
       case _ =>
         throw new IllegalArgumentException(s"can't deserialize object of type ${clazz}")
     }
   }
 
-  private def updateOp(opFormat: UpdateOpFormat): UpdateOp =
-    UpdateOp(payloadSerializer.payload(opFormat.getDelta))
+  // --------------------------------------------------------------------------------
+  //  toBinary helpers
+  // --------------------------------------------------------------------------------
 
-  private def crdt(crdtFormat: CRDTPureOpFormat): CRDT[_] =
-    CRDT(polog(crdtFormat.getPolog), deserializeState(crdtFormat.getState))
+  private def addOpFormatBuilder(op: AddOp): AddOpFormat.Builder =
+    AddOpFormat.newBuilder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
 
-  // TODO review this.
-  def serializeState(state: Any): ByteString = {
-    val stream = new ByteArrayOutputStream()
-    val oos = new ObjectOutputStream(stream)
-    oos.writeObject(state)
-    oos.close()
-    ByteString.copyFrom(stream.toByteArray)
-  }
+  private def removeOpFormatBuilder(op: RemoveOp): RemoveOpFormat.Builder =
+    RemoveOpFormat.newBuilder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
 
-  def deserializeState(state: ByteString): Any = {
-    val ois = new ObjectInputStream(new ByteArrayInputStream(state.toByteArray))
-    val deserialized = ois.readObject
-    ois.close
-    deserialized
+  private def assignOpFormatBuilder(op: AssignOp): AssignOpFormat.Builder =
+    AssignOpFormat.newBuilder.setValue(payloadSerializer.payloadFormatBuilder(op.value.asInstanceOf[AnyRef]))
+
+  private def updateOpFormatBuilder(op: UpdateOp): UpdateOpFormat.Builder =
+    UpdateOpFormat.newBuilder.setDelta(payloadSerializer.payloadFormatBuilder(op.delta.asInstanceOf[AnyRef]))
+
+  private def valueUpdatedFormat(valueUpdated: ValueUpdated): ValueUpdatedFormat.Builder =
+    ValueUpdatedFormat.newBuilder.setOperation(payloadSerializer.payloadFormatBuilder(valueUpdated.operation.asInstanceOf[AnyRef]))
+
+  private def awCartEntryFormatBuilder(orCartEntry: AWCartEntry[_]): AWCartEntryFormat.Builder = {
+    val builder = AWCartEntryFormat.newBuilder
+
+    builder.setKey(payloadSerializer.payloadFormatBuilder(orCartEntry.key.asInstanceOf[AnyRef]))
+    builder.setQuantity(orCartEntry.quantity)
+    builder
   }
 
   private def pologBuilder(polog: POLog): POLogFormat.Builder = {
@@ -122,6 +124,32 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
     builder
   }
 
+  private def crdtFormatBuilder(c: CRDT[_]): CRDTPureOpFormat.Builder = {
+    CRDTPureOpFormat.newBuilder.setPolog(pologBuilder(c.polog)).setState(payloadSerializer.payloadFormatBuilder(c.state.asInstanceOf[AnyRef]))
+  }
+
+  // --------------------------------------------------------------------------------
+  //  fromBinary helpers
+  // --------------------------------------------------------------------------------
+
+  private def addOp(opFormat: AddOpFormat): AddOp =
+    AddOp(payloadSerializer.payload(opFormat.getEntry))
+
+  private def removeOp(opFormat: RemoveOpFormat): RemoveOp =
+    RemoveOp(payloadSerializer.payload(opFormat.getEntry))
+
+  private def assignOp(opFormat: AssignOpFormat): AssignOp =
+    AssignOp(payloadSerializer.payload(opFormat.getValue))
+
+  private def updateOp(opFormat: UpdateOpFormat): UpdateOp =
+    UpdateOp(payloadSerializer.payload(opFormat.getDelta))
+
+  private def valueUpdated(valueUpdatedFormat: ValueUpdatedFormat): ValueUpdated =
+    ValueUpdated(payloadSerializer.payload(valueUpdatedFormat.getOperation))
+
+  private def awCartEntry(orCartEntryFormat: AWCartEntryFormat): AWCartEntry[Any] =
+    AWCartEntry(payloadSerializer.payload(orCartEntryFormat.getKey), orCartEntryFormat.getQuantity)
+
   private def polog(pologFormat: POLogFormat): POLog = {
     val rs = pologFormat.getVersionedEntriesList.iterator.asScala.foldLeft(Set.empty[Versioned[Any]]) {
       case (acc, r) => acc + commonSerializer.versioned(r)
@@ -130,47 +158,9 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
     POLog(rs)
   }
 
-  private def valueUpdated(valueUpdatedFormat: ValueUpdatedFormat): ValueUpdated =
-    ValueUpdated(payloadSerializer.payload(valueUpdatedFormat.getOperation))
+  private def crdt(crdtFormat: CRDTPureOpFormat): CRDT[_] =
+    CRDT(polog(crdtFormat.getPolog), payloadSerializer.payload(crdtFormat.getState))
 
-  private def addOp(opFormat: AddOpFormat): AddOp =
-    AddOp(payloadSerializer.payload(opFormat.getEntry))
-
-  private def removeOp(opFormat: RemoveOpFormat): RemoveOp =
-    RemoveOp(payloadSerializer.payload(opFormat.getEntry))
-
-  private def crdtFormatBuilder(c: CRDT[_]): CRDTPureOpFormat.Builder = {
-    CRDTPureOpFormat.newBuilder.setPolog(pologBuilder(c.polog)).setState(serializeState(c.state))
-  }
-
-  private def valueUpdatedFormat(valueUpdated: ValueUpdated): ValueUpdatedFormat.Builder =
-    ValueUpdatedFormat.newBuilder.setOperation(payloadSerializer.payloadFormatBuilder(valueUpdated.operation.asInstanceOf[AnyRef]))
-
-  private def updateOpFormatBuilder(op: UpdateOp): UpdateOpFormat.Builder =
-    UpdateOpFormat.newBuilder.setDelta(payloadSerializer.payloadFormatBuilder(op.delta.asInstanceOf[AnyRef]))
-
-  private def addOpFormatBuilder(op: AddOp): AddOpFormat.Builder =
-    AddOpFormat.newBuilder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
-
-  private def removeOpFormatBuilder(op: RemoveOp): RemoveOpFormat.Builder =
-    RemoveOpFormat.newBuilder.setEntry(payloadSerializer.payloadFormatBuilder(op.entry.asInstanceOf[AnyRef]))
-
-  private def assignOp(opFormat: AssignOpFormat): AssignOp =
-    AssignOp(payloadSerializer.payload(opFormat.getValue))
-
-  private def assignOpFormatBuilder(op: AssignOp): AssignOpFormat.Builder =
-    AssignOpFormat.newBuilder.setValue(payloadSerializer.payloadFormatBuilder(op.value.asInstanceOf[AnyRef]))
-
-  private def awCartEntryFormatBuilder(orCartEntry: AWCartEntry[_]): AWCartEntryFormat.Builder = {
-    val builder = AWCartEntryFormat.newBuilder
-
-    builder.setKey(payloadSerializer.payloadFormatBuilder(orCartEntry.key.asInstanceOf[AnyRef]))
-    builder.setQuantity(orCartEntry.quantity)
-    builder
-  }
-
-  private def orCartEntry(orCartEntryFormat: AWCartEntryFormat): AWCartEntry[Any] =
-    AWCartEntry(payloadSerializer.payload(orCartEntryFormat.getKey), orCartEntryFormat.getQuantity)
 
 }
 

@@ -25,7 +25,7 @@ message POLogFormat {
 
 message CRDTPureOpFormat {
   optional POLogFormat polog = 1;
-  optional bytes state = 2;
+  optional PayloadFormat state = 2;
 }
 
 message AWCartEntryFormat {
