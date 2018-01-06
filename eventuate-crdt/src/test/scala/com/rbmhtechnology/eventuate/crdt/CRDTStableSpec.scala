@@ -17,6 +17,7 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import com.rbmhtechnology.eventuate.VectorTime
+import com.rbmhtechnology.eventuate.crdt.CRDTUtils.VectorTimeContext
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.Matchers
 import org.scalatest.WordSpec
@@ -25,44 +26,41 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   val crdt = CRDT.zero
   val awSet = AWSet.apply[Int]
 
-  def vt(t1: Long, t2: Long): VectorTime =
-    VectorTime("p1" -> t1, "p2" -> t2)
-
   "An AWSet" should {
     import AWSet._
     import CRDTUtils.AWSetCRDT
-    "discard stable operations" in {
+    "discard stable operations" in new VectorTimeContext {
       val updated = awSet
         .add(1, vt(1, 0))
         .add(2, vt(2, 0))
         .add(3, vt(2, 1))
         .add(4, vt(3, 1))
         .add(5, vt(3, 2))
-        .stable(vt(2, 1))
+        .stable(stableVT(2, 1))
       updated.value shouldBe Set(1, 2, 3, 4, 5)
       updated.polog.log.size shouldBe 2
       updated.state.size shouldBe 3
     }
-    "remove stable values" in {
+    "remove stable values" in new VectorTimeContext {
       val updated = awSet
         .add(1, vt(1, 0))
-        .stable(vt(1, 0))
+        .stable(stableVT(1, 0))
         .remove(1, vt(2, 0))
       updated.value shouldBe Set()
     }
-    "remove only stable values" in {
+    "remove only stable values" in new VectorTimeContext {
       val updated = awSet
         .add(1, vt(1, 0))
         .add(2, vt(2, 0))
-        .remove(1, vt(2, 0))
-        .stable(vt(1, 0))
+        .remove(1, vt(3, 0))
+        .stable(stableVT(1, 0))
       updated.value shouldBe Set(2)
     }
-    "clear stable values" in {
+    "clear stable values" in new VectorTimeContext {
       val updated = awSet
         .add(1, vt(1, 0))
         .add(2, vt(0, 1))
-        .stable(vt(1, 0))
+        .stable(stableVT(1, 0))
         .clear(vt(2, 0))
       updated.value shouldBe Set(2)
     }
@@ -71,11 +69,11 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   "A MVRegister" should {
     import MVRegister._
     import CRDTUtils.MVRegisterCRDT
-    "discard stable operations" in {
+    "discard stable operations" in new VectorTimeContext {
       val updated = crdt
         .assign(1, vt(1, 0))
         .assign(2, vt(0, 1))
-        .stable(vt(1, 1))
+        .stable(stableVT(1, 1))
       updated.value should be(Set(1, 2))
       updated.polog.log.size shouldBe 0
       updated.state.size shouldBe 2
@@ -85,46 +83,50 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   "A LWWRegister" should {
     import LWWRegister._
     import CRDTUtils.LWWRegisterCRDT
-    "discard stable operations" in {
+    "discard stable operations" in new VectorTimeContext {
       val updated = crdt
         .assign(1, vt(1, 0), 0, "emitter1")
         .assign(2, vt(0, 1), 1, "emitter2")
         .assign(3, vt(2, 0), 2, "emitter2")
-        .stable(vt(1, 1))
+        .stable(stableVT(1, 1))
       updated.value should be(Some(3))
       updated.polog.log.size shouldBe 1
       updated.state.size shouldBe 1
     }
-    "clear stable operations (to fix)" in {
-      crdt
+    "clear stable operations" in new VectorTimeContext {
+      val updated = crdt
         .assign(1, vt(1, 0), 0, "emitter1")
         .assign(2, vt(0, 1), 1, "emitter2")
-        .stable(vt(0, 1))
-        .clear(vt(2, 0)) // TODO is ok this test to fail because i'm adding a ClearOP || to (0,1) and this should not happen
-        .value shouldBe Some(1)
-    }
-    "clear stable operations" in {
-      crdt
-        .assign(1, vt(1, 0), 0, "emitter1")
-        .assign(2, vt(0, 1), 1, "emitter2")
-        .stable(vt(0, 1))
+        .stable(stableVT(0, 1))
         .clear(vt(0, 2))
-        .value shouldBe Some(1)
+      updated.value shouldBe Some(1)
+      updated.polog.log.size shouldBe 1
+      updated.state.size shouldBe 0
     }
   }
 
   "An AWCart" should {
     import AWCart._
     import CRDTUtils.AWCartCRDT
-    "discard stable operations" in {
+    "discard stable operations" in new VectorTimeContext {
       val updated = crdt
         .add("a", 1, vt(1, 0))
         .add("b", 2, vt(2, 0))
         .add("a", 5, vt(0, 1))
-        .stable(vt(1, 1))
+        .stable(stableVT(1, 1))
       updated.value should be(Map("a" -> 6, "b" -> 2))
       updated.polog.log.size shouldBe 1
       updated.state.size shouldBe 2
+    }
+    "clear stable operations" in new VectorTimeContext {
+      val updated = crdt
+        .add("a", 1, vt(1, 0))
+        .add("b", 2, vt(2, 0))
+        .stable(stableVT(2, 0))
+        .clear(vt(3, 0))
+      updated.value should be(Map())
+      updated.polog.log.size shouldBe 0
+      updated.state.size shouldBe 0
     }
   }
 

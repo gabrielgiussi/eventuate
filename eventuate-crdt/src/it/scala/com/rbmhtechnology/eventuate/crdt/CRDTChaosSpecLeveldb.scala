@@ -43,7 +43,6 @@ object CRDTChaosSpecLeveldb {
 class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpecLeveldb {
   import ReplicationIntegrationSpec.replicationConnection
   import CRDTChaosSpecLeveldb._
-  import CRDTUtils.AWSetCRDT
 
   class TestEventLog(id: String) extends LeveldbEventLog(id, "log-test") {
     override def write(events: Seq[DurableEvent], partition: Long, clock: EventLogClock): Unit =
@@ -86,7 +85,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
         }
 
         if (stopCounter.get == 4) {
-          probe.ref ! crdt.eval.filterNot(s => s.startsWith("start") || s.startsWith("stop"))
+          probe.ref ! ops.value(crdt).filterNot(s => s.startsWith("start") || s.startsWith("stop"))
           stopCounter.set(0)
         }
       }

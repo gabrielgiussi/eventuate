@@ -24,38 +24,18 @@ import com.rbmhtechnology.eventuate.serializer.SerializationContext
 import org.scalatest._
 
 object CRDTSerializerSpec {
-  def counter(payload: Int) = {
-    import Counter._
-    import CRDTUtils.CounterCRDT._
-    Counter[Int].update(payload, VectorTime("s" -> 17L))
+  def crdt[A](payloads: List[Any], state: A) = {
+    val log = payloads
+      .zipWithIndex
+      .map { case (v, i) => Versioned(v, VectorTime("s" -> i.toLong)) }.toSet
+    CRDT(POLog(log), state)
   }
 
-  def awSet(payload: ExamplePayload) = {
-    import AWSet._
-    import CRDTUtils.AWSetCRDT
-    AWSet[ExamplePayload].add(payload, VectorTime("s" -> 17L))
-  }
-
-  def orCart(key: ExamplePayload) = {
-    import AWCart._
-    import CRDTUtils.AWCartCRDT
-    AWCart().add(key, 3, VectorTime("s" -> 17L))
-  }
+  def crdt[B](payload: Any, state: B) =
+    CRDT(POLog(Set(Versioned(payload, VectorTime("s" -> 17L)))), state)
 
   def orCartEntry(key: ExamplePayload) =
     AWCartEntry(key, 4)
-
-  def mvRegister(payload: ExamplePayload) = {
-    import MVRegister._
-    import CRDTUtils.MVRegisterCRDT
-    MVRegister().assign(payload, VectorTime("s" -> 18L))
-  }
-
-  def lwwRegister(payload: ExamplePayload) = {
-    import LWWRegister._
-    import CRDTUtils.LWWRegisterCRDT
-    LWWRegister().assign(payload, VectorTime("s" -> 19L), 19, "e2")
-  }
 
   def removeOp(payload: ExamplePayload): RemoveOp =
     RemoveOp(payload)
@@ -78,16 +58,14 @@ class CRDTSerializerSpec extends WordSpec with Matchers with BeforeAndAfterAll {
     "support AWSet serialization with default payload serialization" in {
       val serialization = SerializationExtension(systems(0))
 
-      val initial = awSet(ExamplePayload("foo", "bar"))
+      val initial = crdt(ExamplePayload("foo", "bar"), Set(ExamplePayload("pay1", "pay2")))
       val expected = initial
 
       serialization.deserialize(serialization.serialize(initial).get, classOf[CRDT[_]]).get should be(expected)
     }
-    "support AWCart serialization with default key serialization" in {
-      val serialization = SerializationExtension(systems(0))
-
-      val initial = orCart(ExamplePayload("foo", "bar"))
-      val expected = initial
+    "support AWSet serialization with custom payload serialization" in serializations.tail.foreach { serialization =>
+      val initial = crdt(ExamplePayload("foo", "bar"), Set(ExamplePayload("pay1", "pay2")))
+      val expected = crdt(ExamplePayload("bar", "foo"), Set(ExamplePayload("pay1", "pay2")))
 
       serialization.deserialize(serialization.serialize(initial).get, classOf[CRDT[_]]).get should be(expected)
     }
@@ -99,45 +77,21 @@ class CRDTSerializerSpec extends WordSpec with Matchers with BeforeAndAfterAll {
 
       serialization.deserialize(serialization.serialize(initial).get, classOf[AWCartEntry[_]]).get should be(expected)
     }
-    "support AWSet serialization with custom payload serialization" in serializations.tail.foreach { serialization =>
-      val initial = awSet(ExamplePayload("foo", "bar"))
-      val expected = awSet(ExamplePayload("bar", "foo"))
-
-      serialization.deserialize(serialization.serialize(initial).get, classOf[CRDT[_]]).get should be(expected)
-    }
-    "support AWCart serialization with custom key serialization" in serializations.tail.foreach { serialization =>
-      val initial = orCart(ExamplePayload("foo", "bar"))
-      val expected = orCart(ExamplePayload("bar", "foo"))
-
-      serialization.deserialize(serialization.serialize(initial).get, classOf[CRDT[_]]).get should be(expected)
-    }
     "support AWCartEntry serialization with custom key serialization" in serializations.tail.foreach { serialization =>
       val initial = orCartEntry(ExamplePayload("foo", "bar"))
       val expected = orCartEntry(ExamplePayload("bar", "foo"))
 
       serialization.deserialize(serialization.serialize(initial).get, classOf[AWCartEntry[_]]).get should be(expected)
     }
-    "support MVRegister serialization with default payload serialization" in {
-      val initial = mvRegister(ExamplePayload("foo", "bar"))
+    "support SimpleCRDT serialization with default payload serialization" in {
+      val initial = crdt(ExamplePayload("foo", "bar"), Set(AddOp(ExamplePayload("pay1", "pay2"))))
       val expected = initial
 
       serializations(0).deserialize(serializations(0).serialize(initial).get, classOf[CRDT[_]]).get should be(expected)
     }
-    "support MVRegister serialization with custom payload serialization" in serializations.tail.foreach { serialization =>
-      val initial = mvRegister(ExamplePayload("foo", "bar"))
-      val expected = mvRegister(ExamplePayload("bar", "foo"))
-
-      serialization.deserialize(serialization.serialize(initial).get, classOf[CRDT[_]]).get should be(expected)
-    }
-    "support LWWRegister serialization with default payload serialization" in {
-      val initial = lwwRegister(ExamplePayload("foo", "bar"))
-      val expected = initial
-
-      serializations(0).deserialize(serializations(0).serialize(initial).get, classOf[CRDT[_]]).get should be(expected)
-    }
-    "support LWWRegister serialization with custom payload serialization" in serializations.tail.foreach { serialization =>
-      val initial = lwwRegister(ExamplePayload("foo", "bar"))
-      val expected = lwwRegister(ExamplePayload("bar", "foo"))
+    "support SimpleCRDT serialization with custom payload serialization" in serializations.tail.foreach { serialization =>
+      val initial = crdt(ExamplePayload("foo", "bar"), Set(AddOp(ExamplePayload("pay1", "pay2"))))
+      val expected = crdt(ExamplePayload("bar", "foo"), Set(AddOp(ExamplePayload("pay1", "pay2"))))
 
       serialization.deserialize(serialization.serialize(initial).get, classOf[CRDT[_]]).get should be(expected)
     }

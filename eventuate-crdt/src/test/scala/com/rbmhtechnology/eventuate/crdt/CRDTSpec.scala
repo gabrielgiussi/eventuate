@@ -17,9 +17,10 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import com.rbmhtechnology.eventuate.VectorTime
+import com.rbmhtechnology.eventuate.crdt.CRDTUtils.VectorTimeContext
 import org.scalatest._
 
-class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
+class CRDTSpec extends WordSpec with Matchers {
   val counter = Counter.apply[Int]
   val awSet = AWSet.apply[Int]
   val mvReg = MVRegister.apply
@@ -27,33 +28,30 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   val awShoppingCart = AWCart.apply
   val tpSet = TPSet.apply[Int]
 
-  def vt(t1: Long, t2: Long): VectorTime =
-    VectorTime("p1" -> t1, "p2" -> t2)
-
   "A Counter" must {
     import Counter._
     import CRDTUtils.CounterCRDT._
-    "have a default value 0" in {
+    "have a default value 0" in new VectorTimeContext {
       counter.value shouldBe 0
     }
-    "return value of single operation" in {
+    "return value of single operation" in new VectorTimeContext {
       counter
         .update(5, vt(1, 0))
         .value shouldBe 5
     }
-    "return sum of operations" in {
+    "return sum of operations" in new VectorTimeContext {
       counter
         .update(6, vt(1, 0))
         .update(6, vt(2, 0))
         .value shouldBe 12
     }
-    "return sum of concurrent operations" in {
+    "return sum of concurrent operations" in new VectorTimeContext {
       counter
         .update(6, vt(1, 0))
         .update(3, vt(0, 1))
         .value shouldBe 9
     }
-    "return the sum of positive and negative operations" in {
+    "return the sum of positive and negative operations" in new VectorTimeContext {
       counter
         .update(2, vt(1, 0))
         .update(-4, vt(2, 1))
@@ -64,57 +62,57 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   "An AWSet" must {
     import AWSet._
     import CRDTUtils.AWSetCRDT
-    "be empty by default" in {
+    "be empty by default" in new VectorTimeContext {
       awSet.value should be('empty)
     }
-    "add an entry" in {
+    "add an entry" in new VectorTimeContext {
       awSet
         .add(1, vt(1, 0))
         .value should be(Set(1))
     }
-    "mask sequential duplicates" in {
+    "mask sequential duplicates" in new VectorTimeContext {
       awSet
         .add(1, vt(1, 0))
         .add(1, vt(2, 0))
         .value should be(Set(1))
     }
-    "mask concurrent duplicates" in {
+    "mask concurrent duplicates" in new VectorTimeContext {
       awSet
         .add(1, vt(1, 0))
         .add(1, vt(0, 1))
         .value should be(Set(1))
     }
-    "remove a pair" in {
+    "remove a pair" in new VectorTimeContext {
       awSet
         .add(1, vt(1, 0))
         .remove(1, vt(2, 0))
         .value should be(Set())
     }
-    "keep an entry if not all pairs are removed" in {
+    "keep an entry if not all pairs are removed" in new VectorTimeContext {
       awSet
         .add(1, vt(1, 0))
         .add(1, vt(0, 1))
         .remove(1, vt(2, 0))
         .value should be(Set(1))
     }
-    "add an entry if concurrent to remove" in {
+    "add an entry if concurrent to remove" in new VectorTimeContext {
       awSet
         .add(1, vt(1, 0))
         .remove(1, vt(2, 0))
         .add(1, vt(0, 1))
         .value should be(Set(1))
     }
-    "return an empty set after a remove" in {
+    "return an empty set after a remove" in new VectorTimeContext {
       awSet
         .remove(1, vt(1, 0))
         .value should be(Set())
     }
-    "return an empty set after a clear" in {
+    "return an empty set after a clear" in new VectorTimeContext {
       awSet
         .clear(vt(1, 0))
         .value should be(Set())
     }
-    "remove all entries after a clear" in {
+    "remove all entries after a clear" in new VectorTimeContext {
       awSet
         .add(1, vt(1, 0))
         .add(2, vt(2, 0))
@@ -122,7 +120,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .clear(vt(2, 2))
         .value should be(Set())
     }
-    "remove all entries in the causal past after a clear" in {
+    "remove all entries in the causal past after a clear" in new VectorTimeContext {
       awSet
         .add(1, vt(1, 0))
         .add(2, vt(2, 0))
@@ -135,40 +133,40 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   "An MVRegister" must {
     import MVRegister._
     import CRDTUtils.MVRegisterCRDT
-    "not have set a value by default" in {
+    "not have set a value by default" in new VectorTimeContext {
       mvReg.value should be('empty)
     }
-    "store a single value" in {
+    "store a single value" in new VectorTimeContext {
       mvReg
         .assign(1, vt(1, 0))
         .value should be(Set(1))
     }
-    "store multiple values in case of concurrent writes" in {
+    "store multiple values in case of concurrent writes" in new VectorTimeContext {
       mvReg
         .assign(1, vt(1, 0))
         .assign(2, vt(0, 1))
         .value should be(Set(1, 2))
     }
-    "mask duplicate concurrent writes" in {
+    "mask duplicate concurrent writes" in new VectorTimeContext {
       mvReg
         .assign(1, vt(1, 0))
         .assign(1, vt(0, 1))
         .value should be(Set(1))
     }
-    "replace a value if it happened before a new write" in {
+    "replace a value if it happened before a new write" in new VectorTimeContext {
       mvReg
         .assign(1, vt(1, 0))
         .assign(2, vt(2, 0))
         .value should be(Set(2))
     }
-    "replace a value if it happened before a new write and retain a value if it is concurrent to the new write" in {
+    "replace a value if it happened before a new write and retain a value if it is concurrent to the new write" in new VectorTimeContext {
       mvReg
         .assign(1, vt(1, 0))
         .assign(2, vt(0, 1))
         .assign(3, vt(2, 0))
         .value should be(Set(2, 3))
     }
-    "replace multiple concurrent values if they happened before a new write" in {
+    "replace multiple concurrent values if they happened before a new write" in new VectorTimeContext {
       mvReg
         .assign(1, vt(1, 0))
         .assign(2, vt(0, 1))
@@ -179,47 +177,53 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
   "An LWWRegister" must {
     import LWWRegister._
     import CRDTUtils.LWWRegisterCRDT
-    "not have a value by default" in {
+    "not have a value by default" in new VectorTimeContext {
       lwwReg.value should be('empty)
     }
-    "store a single value" in {
+    "store a single value" in new VectorTimeContext {
       lwwReg
         .assign(1, vt(1, 0), 0, "source-1")
         .value should be(Some(1))
     }
-    "accept a new value if was set after the current value according to the vector clock" in {
+    "accept a new value if was set after the current value according to the vector clock" in new VectorTimeContext {
       lwwReg
         .assign(1, vt(1, 0), 1, "emitter-1")
         .assign(2, vt(2, 0), 0, "emitter-2")
         .value should be(Some(2))
     }
 
-    "fallback to the wall clock if the values' vector clocks are concurrent" in {
+    "fallback to the wall clock if the values' vector clocks are concurrent" in new VectorTimeContext {
       lwwReg
         .assign(1, vt(1, 0), 0, "emitter-1")
         .assign(2, vt(0, 1), 1, "emitter-2")
         .value should be(Some(2))
+
+      clearVTHistory()
+
       lwwReg
         .assign(1, vt(1, 0), 1, "emitter-1")
         .assign(2, vt(0, 1), 0, "emitter-2")
         .value should be(Some(1))
     }
-    "fallback to the greatest emitter if the values' vector clocks and wall clocks are concurrent" in {
+    "fallback to the greatest emitter if the values' vector clocks and wall clocks are concurrent" in new VectorTimeContext {
       lwwReg
         .assign(1, vt(1, 0), 0, "emitter-1")
         .assign(2, vt(0, 1), 0, "emitter-2")
         .value should be(Some(2))
+
+      clearVTHistory()
+
       lwwReg
         .assign(1, vt(1, 0), 0, "emitter-2")
         .assign(2, vt(0, 1), 0, "emitter-1")
         .value should be(Some(1))
     }
-    "return none value after just a clear" in {
+    "return none value after just a clear" in new VectorTimeContext {
       lwwReg
         .clear(vt(1, 0))
         .value shouldBe None
     }
-    "remove all values after a clear" in {
+    "remove all values after a clear" in new VectorTimeContext {
       lwwReg
         .assign(1, vt(1, 0), 0, "emmiter1")
         .assign(2, vt(2, 0), 1, "emmiter1")
@@ -227,7 +231,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .clear(vt(2, 2))
         .value shouldBe None
     }
-    "remove only values in the causal past of a clear" in {
+    "remove only values in the causal past of a clear" in new VectorTimeContext {
       lwwReg
         .assign(1, vt(1, 0), 0, "emitter-1")
         .assign(2, vt(0, 1), 0, "emitter-2")
@@ -241,13 +245,13 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
     "be empty by default" in {
       awShoppingCart.value should be('empty)
     }
-    "set initial entry quantities" in {
+    "set initial entry quantities" in new VectorTimeContext {
       awShoppingCart
         .add("a", 2, vt(1, 0))
         .add("b", 3, vt(2, 0))
         .value should be(Map("a" -> 2, "b" -> 3))
     }
-    "increment existing entry quantities" in {
+    "increment existing entry quantities" in new VectorTimeContext {
       awShoppingCart
         .add("a", 1, vt(1, 0))
         .add("b", 3, vt(2, 0))
@@ -255,7 +259,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .add("b", 1, vt(4, 0))
         .value should be(Map("a" -> 2, "b" -> 4))
     }
-    "remove observed entries" in {
+    "remove observed entries" in new VectorTimeContext {
       awShoppingCart
         .add("a", 2, vt(1, 0))
         .add("b", 3, vt(2, 0))
@@ -265,25 +269,25 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .remove("a", vt(6, 0))
         .value should be(Map("b" -> 1))
     }
-    "not remove entries if remove is concurrent" in {
+    "not remove entries if remove is concurrent" in new VectorTimeContext {
       awShoppingCart
         .add("a", 2, vt(1, 0))
         .remove("a", vt(0, 1))
         .value should be(Map("a" -> 2))
     }
-    "remove only entries in the causal past" in {
+    "remove only entries in the causal past" in new VectorTimeContext {
       awShoppingCart
         .add("a", 2, vt(1, 0))
         .add("a", 2, vt(3, 0))
         .remove("a", vt(1, 1))
         .value should be(Map("a" -> 2))
     }
-    "return empty after just a clear" in {
+    "return empty after just a clear" in new VectorTimeContext {
       awShoppingCart
         .clear(vt(1, 0))
         .value should be('empty)
     }
-    "remove all entries after just a clear" in {
+    "remove all entries after just a clear" in new VectorTimeContext {
       awShoppingCart
         .add("a", 1, vt(1, 0))
         .add("b", 2, vt(2, 0))
@@ -291,7 +295,7 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .clear(vt(2, 2))
         .value should be('empty)
     }
-    "remove all entries in the causal past after a clear" in {
+    "remove all entries in the causal past after a clear" in new VectorTimeContext {
       awShoppingCart
         .add("a", 1, vt(1, 0))(AWCartServiceOps)
         .add("b", 2, vt(0, 1))
@@ -308,48 +312,50 @@ class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
     "be empty by default" in {
       tpSet.value shouldBe Set.empty
     }
-    "add an entry" in {
+    "add an entry" in new VectorTimeContext {
       tpSet
         .add(1, vt(1, 0))
         .value should be(Set(1))
     }
-    "mask sequential duplicates" in {
+    "mask sequential duplicates" in new VectorTimeContext {
       tpSet
         .add(1, vt(1, 0))
         .add(1, vt(2, 0))
         .value should be(Set(1))
     }
-    "mask concurrent duplicates" in {
+    "mask concurrent duplicates" in new VectorTimeContext {
       tpSet
         .add(1, vt(1, 0))
         .add(1, vt(0, 1))
         .value should be(Set(1))
     }
-    "remove a pair" in {
+    "remove a pair" in new VectorTimeContext {
       tpSet
         .add(1, vt(1, 0))
         .remove(1, vt(2, 0))
         .value should be(Set())
     }
-    "don't add an element that was removed" in {
+    "don't add an element that was removed" in new VectorTimeContext {
       tpSet
         .add(1, vt(1, 0))
         .remove(1, vt(0, 1))
         .add(1, vt(2, 1))
         .value should be(Set())
     }
-    "commute" in { // TODO rename!
+    "commute" in new VectorTimeContext {
       tpSet
         .add(1, vt(1, 0))
         .remove(1, vt(0, 1))
         .value should be(Set())
+
+      clearVTHistory()
 
       tpSet
         .remove(1, vt(0, 1))
         .add(1, vt(1, 0))
         .value should be(Set())
     }
-    "return an empty set after a remove" in {
+    "return an empty set after a remove" in new VectorTimeContext {
       tpSet
         .remove(1, vt(1, 0))
         .value should be(Set())

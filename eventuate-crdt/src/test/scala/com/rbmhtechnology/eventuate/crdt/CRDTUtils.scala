@@ -26,6 +26,8 @@ import scala.collection.immutable.Set
 
 object CRDTUtils {
 
+  case class StableVectorTime(vt: VectorTime)
+
   class EnhancedCRDT[A](crdt: A) {
     def eval[B](implicit ops: CRDTServiceOps[A, B]): B = ops.eval(crdt)
 
@@ -34,7 +36,7 @@ object CRDTUtils {
 
   class EnhancedNonCommutativeCRDT[A](crdt: CRDT[A]) extends EnhancedCRDT[CRDT[A]](crdt) {
 
-    def stable(stableT: VectorTime)(implicit ops: CvRDTPureOp[A, _]) = ops.stable(crdt, stableT)
+    def stable(stable: StableVectorTime)(implicit ops: CvRDTPureOp[A, _]) = ops.stable(crdt, stable.vt)
 
   }
 
@@ -75,6 +77,32 @@ object CRDTUtils {
   implicit class MVRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT[Seq[Operation]](crdt) {
     def assign(value: A, vectorTime: VectorTime)(implicit ops: CvRDTPureOpSimple[Set[A]]) = ops.effect(crdt, AssignOp(value), vectorTime)
     def clear(t: VectorTime)(implicit ops: CvRDTPureOpSimple[Set[A]]) = ops.effect(crdt, Clear, t)
+  }
+
+  trait VectorTimeContext {
+    var emitted = Set.empty[VectorTime]
+    var stable = Set.empty[VectorTime]
+
+    private def _vt(t1: Long, t2: Long) = VectorTime("p1" -> t1, "p2" -> t2)
+
+    def vt(t1: Long, t2: Long): VectorTime = {
+      val newVT = _vt(t1, t2)
+      if (emitted.contains(newVT)) throw new RuntimeException(s"you are trying to add $newVT twice")
+      stable.find(_ || newVT).foreach(st => throw new RuntimeException(s"you are trying to add a $newVT but is concurrent to the stable $st"))
+      emitted += newVT
+      newVT
+    }
+
+    def stableVT(t1: Long, t2: Long): StableVectorTime = {
+      val newVT = _vt(t1, t2)
+      stable += newVT
+      StableVectorTime(newVT)
+    }
+
+    def clearVTHistory() = {
+      stable = Set.empty
+      emitted = Set.empty
+    }
   }
 
 }

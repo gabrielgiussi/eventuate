@@ -60,7 +60,7 @@ abstract class ReplicatedAWSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
       runOn(nodeA) {
         val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
         val service = new AWSetService[Int]("A", endpoint.log)(system, AWSet.AWSetServiceOps) { // FIXME i don't need to pass the ops before
-          override private[crdt] def onChange(crdt: AWSet[Int], operation: Option[Operation]): Unit = probe.ref ! crdt.value
+          override private[crdt] def onChange(crdt: AWSet[Int], operation: Option[Operation]): Unit = probe.ref ! ops.value(crdt)
         }
 
         service.add("x", 1)
@@ -86,7 +86,7 @@ abstract class ReplicatedAWSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
       runOn(nodeB) {
         val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
         val service = new AWSetService[Int]("B", endpoint.log)(system, AWSet.AWSetServiceOps) {
-          override private[crdt] def onChange(crdt: AWSet[Int], operation: Option[Operation]): Unit = probe.ref ! crdt.value
+          override private[crdt] def onChange(crdt: AWSet[Int], operation: Option[Operation]): Unit = probe.ref ! ops.value(crdt)
         }
 
         service.value("x")
