@@ -46,6 +46,8 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
     crdt.copy(stabilizedPOLog, stabilizedState)
   }
 
+  override def precondition: Boolean = false
+
 }
 
 trait CvRDTPureOpSimple[B] extends CvRDTPureOp[Seq[Operation], B] {

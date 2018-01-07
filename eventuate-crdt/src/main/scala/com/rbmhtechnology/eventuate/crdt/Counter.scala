@@ -26,15 +26,6 @@ object Counter {
 
   def apply[A: Integral]: A = implicitly[Integral[A]].zero
 
-  /**
-   * Adds `delta` (which can also be negative) to the counter `value` and
-   * returns an updated counter.
-   *
-   * implicit def merge[A: Integral](s: A, op: Versioned[Operation]) = op.value match {
-   * case UpdateOp(delta) => implicitly[Integral[A]].plus(s, delta.asInstanceOf[A])
-   * }
-   */
-  //implicit def CounterServiceOps[A: Integral] = new CRDTServiceOps[Counter[A], A] {
   implicit def CounterServiceOps[A: Integral] = new CRDTServiceOps[A, A] {
 
     override def zero: A = Counter.apply[A]
@@ -57,7 +48,6 @@ object Counter {
  * @tparam A Counter value type.
  */
 class CounterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, integral: Integral[A], val ops: CRDTServiceOps[A, A])
-  //extends CRDTService[Counter[A], A] {
   extends CRDTService[A, A] {
 
   /**

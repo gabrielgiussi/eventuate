@@ -1,41 +1,12 @@
-1. Porque me tira este error en los test?
-   could not find implicit value for parameter ops: com.rbmhtechnology.eventuate.crdt.CRDTServiceOps[scala.collection.immutable.Set[Int]]
-   Se soluciona importando el companion object import ORSet._ donde se define implict def CRDTServiceOps,
-   pero antes no se necesitaba!
-
 2. test PureOp NonCommutative framework
 
 5. document things
-
-7. Ask Carlos
-   a) AWSet is the PureOp based ORSet?
-   b) Even more, an add operation a cannot
-      be removed despite the presence of concurrent rmv operation r (as one might think). The
-      reason is that r can become stable at any time; if it happened to be followed by a clear
-      operation, i.e., in its causal future, all stable operations in the PO-Log will be deleted, r
-      among them. Since a is not yet stable, and thus concurrent with clear, the former will
-      stay in the PO-Log. This breaks the remove-wins semantics since r and a were originally
-      concurrent and hence r should win. These reasons lead to a more complex stabilize function
-      (explained next) that is in charge of removing the extra operations that were not safe to be
-      removed previously through R or R _ .
-
-      Doesn't make sense to me
-   c) EWFlag is just an AWSet where we can only add/rmv a single fixed element. Example: 1
-      It would only make sense if it could return (enabled,disabled,unset)
-      but it only contains Enable so we could not differentiate between disabled an unset.
-
-    d) Can add quotes to eventuate source code?
 
 8. RWSet, EWFlag
 
 11. Restrict the access to POLog and state, and method like addOp
 
-12. The PureOp framework doesn't lack a pruneState or updateState?
-    In the framework, the AWSet bug doesn't happen because the prune of the POLOG should
-    discard stable operatios (with VectorTime = zero). I could do that, but then the framework will be restricted
-    to a state made of stable ops, and not a specific set for example.
-
-13. FIX ChaosTestSpec
+13. FIX ChaosTestSpec (related to ops.precondition)
 
 16. FIX the need of import the object that contains the ops def for instantiate the service (before this wasn't needed)
 

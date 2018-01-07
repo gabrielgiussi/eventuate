@@ -57,7 +57,7 @@ trait CRDTServiceOps[A, B] {
    * `false` if CRDT does not check preconditions, as this will significantly increase
    * write throughput.
    */
-  def precondition: Boolean = true // TODO REVIEW. What is this for?
+  def precondition: Boolean = true
 
   /**
    * Update phase 1 ("atSource"). Prepares an operation for phase 2.
@@ -217,8 +217,7 @@ trait CRDTService[A, B] {
     // TODO where do this?
     eventLog ! SubscribeTCStable(self)
 
-    override def stateSync: Boolean = false
-    //  ops.precondition
+    override def stateSync: Boolean = ops.precondition
 
     override def onCommand = {
       case Get(`crdtId`) =>

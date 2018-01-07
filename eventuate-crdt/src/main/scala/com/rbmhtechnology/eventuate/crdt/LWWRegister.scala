@@ -41,9 +41,6 @@ object LWWRegister {
 
   implicit def LWWRegisterServiceOps[A] = new CvRDTPureOpSimple[Option[A]] {
 
-    override def precondition: Boolean =
-      false
-
     override def customEval(ops: Seq[Versioned[Operation]]): Option[A] =
       ops.sorted(LWWRegister.LWWOrdering[A]).lastOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A])
 

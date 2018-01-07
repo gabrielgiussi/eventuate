@@ -32,8 +32,6 @@ object MVRegister {
 
   implicit def MVRegisterServiceOps[A] = new CvRDTPureOpSimple[Set[A]] {
 
-    override def precondition: Boolean = false
-
     override protected def customEval(ops: Seq[Versioned[Operation]]): Set[A] = ops.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A]).toSet
 
     val r: Redundancy = (op, _) => op.value.isInstanceOf[Clear.type]

@@ -43,6 +43,8 @@ object TPSet {
         case (RemoveOp(e: A), (added, removed)) => (added - e, removed + e)
         case (_, crdt) => crdt
       }
+
+    override def precondition: Boolean = false
   }
 
 }
