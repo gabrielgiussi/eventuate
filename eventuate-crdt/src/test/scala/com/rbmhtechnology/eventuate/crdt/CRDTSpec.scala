@@ -17,7 +17,7 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import com.rbmhtechnology.eventuate.VectorTime
-import com.rbmhtechnology.eventuate.crdt.CRDTUtils.VectorTimeContext
+import com.rbmhtechnology.eventuate.crdt.CRDTTestDSL.VectorTimeControl
 import org.scalatest._
 
 class CRDTSpec extends WordSpec with Matchers {
@@ -30,28 +30,28 @@ class CRDTSpec extends WordSpec with Matchers {
 
   "A Counter" must {
     import Counter._
-    import CRDTUtils.CounterCRDT._
-    "have a default value 0" in new VectorTimeContext {
+    import CRDTTestDSL.CounterCRDT
+    "have a default value 0" in new VectorTimeControl {
       counter.value shouldBe 0
     }
-    "return value of single operation" in new VectorTimeContext {
+    "return value of single operation" in new VectorTimeControl {
       counter
         .update(5, vt(1, 0))
         .value shouldBe 5
     }
-    "return sum of operations" in new VectorTimeContext {
+    "return sum of operations" in new VectorTimeControl {
       counter
         .update(6, vt(1, 0))
         .update(6, vt(2, 0))
         .value shouldBe 12
     }
-    "return sum of concurrent operations" in new VectorTimeContext {
+    "return sum of concurrent operations" in new VectorTimeControl {
       counter
         .update(6, vt(1, 0))
         .update(3, vt(0, 1))
         .value shouldBe 9
     }
-    "return the sum of positive and negative operations" in new VectorTimeContext {
+    "return the sum of positive and negative operations" in new VectorTimeControl {
       counter
         .update(2, vt(1, 0))
         .update(-4, vt(2, 1))
@@ -61,58 +61,58 @@ class CRDTSpec extends WordSpec with Matchers {
 
   "An AWSet" must {
     import AWSet._
-    import CRDTUtils.AWSetCRDT
-    "be empty by default" in new VectorTimeContext {
+    import CRDTTestDSL.AWSetCRDT
+    "be empty by default" in new VectorTimeControl {
       awSet.value should be('empty)
     }
-    "add an entry" in new VectorTimeContext {
+    "add an entry" in new VectorTimeControl {
       awSet
         .add(1, vt(1, 0))
         .value should be(Set(1))
     }
-    "mask sequential duplicates" in new VectorTimeContext {
+    "mask sequential duplicates" in new VectorTimeControl {
       awSet
         .add(1, vt(1, 0))
         .add(1, vt(2, 0))
         .value should be(Set(1))
     }
-    "mask concurrent duplicates" in new VectorTimeContext {
+    "mask concurrent duplicates" in new VectorTimeControl {
       awSet
         .add(1, vt(1, 0))
         .add(1, vt(0, 1))
         .value should be(Set(1))
     }
-    "remove a pair" in new VectorTimeContext {
+    "remove a pair" in new VectorTimeControl {
       awSet
         .add(1, vt(1, 0))
         .remove(1, vt(2, 0))
         .value should be(Set())
     }
-    "keep an entry if not all pairs are removed" in new VectorTimeContext {
+    "keep an entry if not all pairs are removed" in new VectorTimeControl {
       awSet
         .add(1, vt(1, 0))
         .add(1, vt(0, 1))
         .remove(1, vt(2, 0))
         .value should be(Set(1))
     }
-    "add an entry if concurrent to remove" in new VectorTimeContext {
+    "add an entry if concurrent to remove" in new VectorTimeControl {
       awSet
         .add(1, vt(1, 0))
         .remove(1, vt(2, 0))
         .add(1, vt(0, 1))
         .value should be(Set(1))
     }
-    "return an empty set after a remove" in new VectorTimeContext {
+    "return an empty set after a remove" in new VectorTimeControl {
       awSet
         .remove(1, vt(1, 0))
         .value should be(Set())
     }
-    "return an empty set after a clear" in new VectorTimeContext {
+    "return an empty set after a clear" in new VectorTimeControl {
       awSet
         .clear(vt(1, 0))
         .value should be(Set())
     }
-    "remove all entries after a clear" in new VectorTimeContext {
+    "remove all entries after a clear" in new VectorTimeControl {
       awSet
         .add(1, vt(1, 0))
         .add(2, vt(2, 0))
@@ -120,7 +120,7 @@ class CRDTSpec extends WordSpec with Matchers {
         .clear(vt(2, 2))
         .value should be(Set())
     }
-    "remove all entries in the causal past after a clear" in new VectorTimeContext {
+    "remove all entries in the causal past after a clear" in new VectorTimeControl {
       awSet
         .add(1, vt(1, 0))
         .add(2, vt(2, 0))
@@ -132,41 +132,41 @@ class CRDTSpec extends WordSpec with Matchers {
   }
   "An MVRegister" must {
     import MVRegister._
-    import CRDTUtils.MVRegisterCRDT
-    "not have set a value by default" in new VectorTimeContext {
+    import CRDTTestDSL.MVRegisterCRDT
+    "not have set a value by default" in new VectorTimeControl {
       mvReg.value should be('empty)
     }
-    "store a single value" in new VectorTimeContext {
+    "store a single value" in new VectorTimeControl {
       mvReg
         .assign(1, vt(1, 0))
         .value should be(Set(1))
     }
-    "store multiple values in case of concurrent writes" in new VectorTimeContext {
+    "store multiple values in case of concurrent writes" in new VectorTimeControl {
       mvReg
         .assign(1, vt(1, 0))
         .assign(2, vt(0, 1))
         .value should be(Set(1, 2))
     }
-    "mask duplicate concurrent writes" in new VectorTimeContext {
+    "mask duplicate concurrent writes" in new VectorTimeControl {
       mvReg
         .assign(1, vt(1, 0))
         .assign(1, vt(0, 1))
         .value should be(Set(1))
     }
-    "replace a value if it happened before a new write" in new VectorTimeContext {
+    "replace a value if it happened before a new write" in new VectorTimeControl {
       mvReg
         .assign(1, vt(1, 0))
         .assign(2, vt(2, 0))
         .value should be(Set(2))
     }
-    "replace a value if it happened before a new write and retain a value if it is concurrent to the new write" in new VectorTimeContext {
+    "replace a value if it happened before a new write and retain a value if it is concurrent to the new write" in new VectorTimeControl {
       mvReg
         .assign(1, vt(1, 0))
         .assign(2, vt(0, 1))
         .assign(3, vt(2, 0))
         .value should be(Set(2, 3))
     }
-    "replace multiple concurrent values if they happened before a new write" in new VectorTimeContext {
+    "replace multiple concurrent values if they happened before a new write" in new VectorTimeControl {
       mvReg
         .assign(1, vt(1, 0))
         .assign(2, vt(0, 1))
@@ -176,23 +176,23 @@ class CRDTSpec extends WordSpec with Matchers {
   }
   "An LWWRegister" must {
     import LWWRegister._
-    import CRDTUtils.LWWRegisterCRDT
-    "not have a value by default" in new VectorTimeContext {
+    import CRDTTestDSL.LWWRegisterCRDT
+    "not have a value by default" in new VectorTimeControl {
       lwwReg.value should be('empty)
     }
-    "store a single value" in new VectorTimeContext {
+    "store a single value" in new VectorTimeControl {
       lwwReg
         .assign(1, vt(1, 0), 0, "source-1")
         .value should be(Some(1))
     }
-    "accept a new value if was set after the current value according to the vector clock" in new VectorTimeContext {
+    "accept a new value if was set after the current value according to the vector clock" in new VectorTimeControl {
       lwwReg
         .assign(1, vt(1, 0), 1, "emitter-1")
         .assign(2, vt(2, 0), 0, "emitter-2")
         .value should be(Some(2))
     }
 
-    "fallback to the wall clock if the values' vector clocks are concurrent" in new VectorTimeContext {
+    "fallback to the wall clock if the values' vector clocks are concurrent" in new VectorTimeControl {
       lwwReg
         .assign(1, vt(1, 0), 0, "emitter-1")
         .assign(2, vt(0, 1), 1, "emitter-2")
@@ -205,7 +205,7 @@ class CRDTSpec extends WordSpec with Matchers {
         .assign(2, vt(0, 1), 0, "emitter-2")
         .value should be(Some(1))
     }
-    "fallback to the greatest emitter if the values' vector clocks and wall clocks are concurrent" in new VectorTimeContext {
+    "fallback to the greatest emitter if the values' vector clocks and wall clocks are concurrent" in new VectorTimeControl {
       lwwReg
         .assign(1, vt(1, 0), 0, "emitter-1")
         .assign(2, vt(0, 1), 0, "emitter-2")
@@ -218,12 +218,12 @@ class CRDTSpec extends WordSpec with Matchers {
         .assign(2, vt(0, 1), 0, "emitter-1")
         .value should be(Some(1))
     }
-    "return none value after just a clear" in new VectorTimeContext {
+    "return none value after just a clear" in new VectorTimeControl {
       lwwReg
         .clear(vt(1, 0))
         .value shouldBe None
     }
-    "remove all values after a clear" in new VectorTimeContext {
+    "remove all values after a clear" in new VectorTimeControl {
       lwwReg
         .assign(1, vt(1, 0), 0, "emmiter1")
         .assign(2, vt(2, 0), 1, "emmiter1")
@@ -231,7 +231,7 @@ class CRDTSpec extends WordSpec with Matchers {
         .clear(vt(2, 2))
         .value shouldBe None
     }
-    "remove only values in the causal past of a clear" in new VectorTimeContext {
+    "remove only values in the causal past of a clear" in new VectorTimeControl {
       lwwReg
         .assign(1, vt(1, 0), 0, "emitter-1")
         .assign(2, vt(0, 1), 0, "emitter-2")
@@ -241,17 +241,17 @@ class CRDTSpec extends WordSpec with Matchers {
   }
   "An AWCart" must {
     import AWCart._
-    import CRDTUtils.AWCartCRDT
+    import CRDTTestDSL.AWCartCRDT
     "be empty by default" in {
       awShoppingCart.value should be('empty)
     }
-    "set initial entry quantities" in new VectorTimeContext {
+    "set initial entry quantities" in new VectorTimeControl {
       awShoppingCart
         .add("a", 2, vt(1, 0))
         .add("b", 3, vt(2, 0))
         .value should be(Map("a" -> 2, "b" -> 3))
     }
-    "increment existing entry quantities" in new VectorTimeContext {
+    "increment existing entry quantities" in new VectorTimeControl {
       awShoppingCart
         .add("a", 1, vt(1, 0))
         .add("b", 3, vt(2, 0))
@@ -259,7 +259,7 @@ class CRDTSpec extends WordSpec with Matchers {
         .add("b", 1, vt(4, 0))
         .value should be(Map("a" -> 2, "b" -> 4))
     }
-    "remove observed entries" in new VectorTimeContext {
+    "remove observed entries" in new VectorTimeControl {
       awShoppingCart
         .add("a", 2, vt(1, 0))
         .add("b", 3, vt(2, 0))
@@ -269,25 +269,25 @@ class CRDTSpec extends WordSpec with Matchers {
         .remove("a", vt(6, 0))
         .value should be(Map("b" -> 1))
     }
-    "not remove entries if remove is concurrent" in new VectorTimeContext {
+    "not remove entries if remove is concurrent" in new VectorTimeControl {
       awShoppingCart
         .add("a", 2, vt(1, 0))
         .remove("a", vt(0, 1))
         .value should be(Map("a" -> 2))
     }
-    "remove only entries in the causal past" in new VectorTimeContext {
+    "remove only entries in the causal past" in new VectorTimeControl {
       awShoppingCart
         .add("a", 2, vt(1, 0))
         .add("a", 2, vt(3, 0))
         .remove("a", vt(1, 1))
         .value should be(Map("a" -> 2))
     }
-    "return empty after just a clear" in new VectorTimeContext {
+    "return empty after just a clear" in new VectorTimeControl {
       awShoppingCart
         .clear(vt(1, 0))
         .value should be('empty)
     }
-    "remove all entries after just a clear" in new VectorTimeContext {
+    "remove all entries after just a clear" in new VectorTimeControl {
       awShoppingCart
         .add("a", 1, vt(1, 0))
         .add("b", 2, vt(2, 0))
@@ -295,7 +295,7 @@ class CRDTSpec extends WordSpec with Matchers {
         .clear(vt(2, 2))
         .value should be('empty)
     }
-    "remove all entries in the causal past after a clear" in new VectorTimeContext {
+    "remove all entries in the causal past after a clear" in new VectorTimeControl {
       awShoppingCart
         .add("a", 1, vt(1, 0))(AWCartServiceOps)
         .add("b", 2, vt(0, 1))
@@ -308,41 +308,41 @@ class CRDTSpec extends WordSpec with Matchers {
 
   "A TPSet" must {
     import TPSet._
-    import CRDTUtils.TPSetCRDT
+    import CRDTTestDSL.TPSetCRDT
     "be empty by default" in {
       tpSet.value shouldBe Set.empty
     }
-    "add an entry" in new VectorTimeContext {
+    "add an entry" in new VectorTimeControl {
       tpSet
         .add(1, vt(1, 0))
         .value should be(Set(1))
     }
-    "mask sequential duplicates" in new VectorTimeContext {
+    "mask sequential duplicates" in new VectorTimeControl {
       tpSet
         .add(1, vt(1, 0))
         .add(1, vt(2, 0))
         .value should be(Set(1))
     }
-    "mask concurrent duplicates" in new VectorTimeContext {
+    "mask concurrent duplicates" in new VectorTimeControl {
       tpSet
         .add(1, vt(1, 0))
         .add(1, vt(0, 1))
         .value should be(Set(1))
     }
-    "remove a pair" in new VectorTimeContext {
+    "remove a pair" in new VectorTimeControl {
       tpSet
         .add(1, vt(1, 0))
         .remove(1, vt(2, 0))
         .value should be(Set())
     }
-    "don't add an element that was removed" in new VectorTimeContext {
+    "don't add an element that was removed" in new VectorTimeControl {
       tpSet
         .add(1, vt(1, 0))
         .remove(1, vt(0, 1))
         .add(1, vt(2, 1))
         .value should be(Set())
     }
-    "commute" in new VectorTimeContext {
+    "commute" in new VectorTimeControl {
       tpSet
         .add(1, vt(1, 0))
         .remove(1, vt(0, 1))
@@ -355,7 +355,7 @@ class CRDTSpec extends WordSpec with Matchers {
         .add(1, vt(1, 0))
         .value should be(Set())
     }
-    "return an empty set after a remove" in new VectorTimeContext {
+    "return an empty set after a remove" in new VectorTimeControl {
       tpSet
         .remove(1, vt(1, 0))
         .value should be(Set())

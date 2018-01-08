@@ -46,7 +46,7 @@ object ReplicatedORSetConfig extends MultiNodeReplicationConfig {
 
 abstract class ReplicatedAWSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) with MultiNodeWordSpec with MultiNodeReplicationEndpoint {
   import ReplicatedORSetConfig._
-  import CRDTUtils.AWSetCRDT
+  import CRDTTestDSL.AWSetCRDT
 
   def initialParticipants: Int =
     roles.size

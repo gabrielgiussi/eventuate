@@ -17,7 +17,7 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import com.rbmhtechnology.eventuate.VectorTime
-import com.rbmhtechnology.eventuate.crdt.CRDTUtils.VectorTimeContext
+import com.rbmhtechnology.eventuate.crdt.CRDTTestDSL.VectorTimeControl
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.Matchers
 import org.scalatest.WordSpec
@@ -28,8 +28,8 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
 
   "An AWSet" should {
     import AWSet._
-    import CRDTUtils.AWSetCRDT
-    "discard stable operations" in new VectorTimeContext {
+    import CRDTTestDSL.AWSetCRDT
+    "discard stable operations" in new VectorTimeControl {
       val updated = awSet
         .add(1, vt(1, 0))
         .add(2, vt(2, 0))
@@ -41,14 +41,14 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
       updated.polog.log.size shouldBe 2
       updated.state.size shouldBe 3
     }
-    "remove stable values" in new VectorTimeContext {
+    "remove stable values" in new VectorTimeControl {
       val updated = awSet
         .add(1, vt(1, 0))
         .stable(stableVT(1, 0))
         .remove(1, vt(2, 0))
       updated.value shouldBe Set()
     }
-    "remove only stable values" in new VectorTimeContext {
+    "remove only stable values" in new VectorTimeControl {
       val updated = awSet
         .add(1, vt(1, 0))
         .add(2, vt(2, 0))
@@ -56,7 +56,7 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
         .stable(stableVT(1, 0))
       updated.value shouldBe Set(2)
     }
-    "clear stable values" in new VectorTimeContext {
+    "clear stable values" in new VectorTimeControl {
       val updated = awSet
         .add(1, vt(1, 0))
         .add(2, vt(0, 1))
@@ -68,8 +68,8 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
 
   "A MVRegister" should {
     import MVRegister._
-    import CRDTUtils.MVRegisterCRDT
-    "discard stable operations" in new VectorTimeContext {
+    import CRDTTestDSL.MVRegisterCRDT
+    "discard stable operations" in new VectorTimeControl {
       val updated = crdt
         .assign(1, vt(1, 0))
         .assign(2, vt(0, 1))
@@ -82,8 +82,8 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
 
   "A LWWRegister" should {
     import LWWRegister._
-    import CRDTUtils.LWWRegisterCRDT
-    "discard stable operations" in new VectorTimeContext {
+    import CRDTTestDSL.LWWRegisterCRDT
+    "discard stable operations" in new VectorTimeControl {
       val updated = crdt
         .assign(1, vt(1, 0), 0, "emitter1")
         .assign(2, vt(0, 1), 1, "emitter2")
@@ -93,7 +93,7 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
       updated.polog.log.size shouldBe 1
       updated.state.size shouldBe 1
     }
-    "clear stable operations" in new VectorTimeContext {
+    "clear stable operations" in new VectorTimeControl {
       val updated = crdt
         .assign(1, vt(1, 0), 0, "emitter1")
         .assign(2, vt(0, 1), 1, "emitter2")
@@ -107,8 +107,8 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
 
   "An AWCart" should {
     import AWCart._
-    import CRDTUtils.AWCartCRDT
-    "discard stable operations" in new VectorTimeContext {
+    import CRDTTestDSL.AWCartCRDT
+    "discard stable operations" in new VectorTimeControl {
       val updated = crdt
         .add("a", 1, vt(1, 0))
         .add("b", 2, vt(2, 0))
@@ -118,7 +118,7 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
       updated.polog.log.size shouldBe 1
       updated.state.size shouldBe 2
     }
-    "clear stable operations" in new VectorTimeContext {
+    "clear stable operations" in new VectorTimeControl {
       val updated = crdt
         .add("a", 1, vt(1, 0))
         .add("b", 2, vt(2, 0))

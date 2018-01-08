@@ -24,7 +24,7 @@ import com.rbmhtechnology.eventuate.crdt.TPSet.TPSet
 
 import scala.collection.immutable.Set
 
-object CRDTUtils {
+object CRDTTestDSL {
 
   case class StableVectorTime(vt: VectorTime)
 
@@ -34,7 +34,7 @@ object CRDTUtils {
     def value[B](implicit ops: CRDTServiceOps[A, B]): B = eval(ops)
   }
 
-  class EnhancedNonCommutativeCRDT[A](crdt: CRDT[A]) extends EnhancedCRDT[CRDT[A]](crdt) {
+  class EnhancedCvRDT[A](crdt: CRDT[A]) extends EnhancedCRDT[CRDT[A]](crdt) {
 
     def stable(stable: StableVectorTime)(implicit ops: CvRDTPureOp[A, _]) = ops.stable(crdt, stable.vt)
 
@@ -48,38 +48,34 @@ object CRDTUtils {
 
   }
 
-  implicit class AWCartCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT[Seq[Operation]](crdt) {
+  implicit class AWCartCRDT[A](crdt: SimpleCRDT) extends EnhancedCvRDT[Seq[Operation]](crdt) {
 
     def add(key: A, quantity: Int, timestamp: VectorTime)(implicit ops: CvRDTPureOpSimple[_]) = ops.effect(crdt, AddOp(AWCartEntry(key, quantity)), timestamp)
     def remove(key: A, t: VectorTime)(implicit ops: CvRDTPureOpSimple[Map[A, Int]]) = ops.effect(crdt, RemoveOp(key), t)
     def clear(vectorTime: VectorTime)(implicit ops: CvRDTPureOpSimple[Map[A, Int]]) = ops.effect(crdt, Clear, vectorTime)
   }
 
-  implicit class AWSetCRDT[A](crdt: AWSet[A]) extends EnhancedNonCommutativeCRDT[Set[A]](crdt) {
+  implicit class AWSetCRDT[A](crdt: AWSet[A]) extends EnhancedCvRDT[Set[A]](crdt) {
     def add(value: A, vectorTime: VectorTime)(implicit ops: CvRDTPureOp[Set[A], Set[A]]) = ops.effect(crdt, AddOp(value), vectorTime)
     def remove(value: A, vectorTime: VectorTime)(implicit ops: CvRDTPureOp[Set[A], Set[A]]) = ops.effect(crdt, RemoveOp(value), vectorTime)
     def clear(vectorTime: VectorTime)(implicit ops: CvRDTPureOp[Set[A], Set[A]]) = ops.effect(crdt, Clear, vectorTime)
   }
 
-  object CounterCRDT {
-
-    implicit class CounterCRDT[A: Integral](crdt: A) extends EnhancedCRDT[A](crdt) {
-      def update(delta: A, vt: VectorTime)(implicit ops: CRDTServiceOps[A, A]) = ops.effect(crdt, UpdateOp(delta), vt)
-    }
-
+  implicit class CounterCRDT[A: Integral](crdt: A) extends EnhancedCRDT[A](crdt) {
+    def update(delta: A, vt: VectorTime)(implicit ops: CRDTServiceOps[A, A]) = ops.effect(crdt, UpdateOp(delta), vt)
   }
 
-  implicit class LWWRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT[Seq[Operation]](crdt) {
+  implicit class LWWRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedCvRDT[Seq[Operation]](crdt) {
     def assign(value: A, vectorTime: VectorTime, timestamp: Long, creator: String)(implicit ops: CvRDTPureOpSimple[Option[A]]) = ops.effect(crdt, AssignOp(value), vectorTime, timestamp, creator)
     def clear(t: VectorTime)(implicit ops: CvRDTPureOpSimple[Option[A]]) = ops.effect(crdt, Clear, t)
   }
 
-  implicit class MVRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedNonCommutativeCRDT[Seq[Operation]](crdt) {
+  implicit class MVRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedCvRDT[Seq[Operation]](crdt) {
     def assign(value: A, vectorTime: VectorTime)(implicit ops: CvRDTPureOpSimple[Set[A]]) = ops.effect(crdt, AssignOp(value), vectorTime)
     def clear(t: VectorTime)(implicit ops: CvRDTPureOpSimple[Set[A]]) = ops.effect(crdt, Clear, t)
   }
 
-  trait VectorTimeContext {
+  trait VectorTimeControl {
     var emitted = Set.empty[VectorTime]
     var stable = Set.empty[VectorTime]
 
