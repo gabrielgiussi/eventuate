@@ -161,6 +161,5 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private def crdt(crdtFormat: CRDTPureOpFormat): CRDT[_] =
     CRDT(polog(crdtFormat.getPolog), payloadSerializer.payload(crdtFormat.getState))
 
-
 }
 

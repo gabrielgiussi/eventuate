@@ -46,7 +46,6 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
 
   class TestEventLog(id: String) extends LeveldbEventLog(id, "log-test") {
     override def write(events: Seq[DurableEvent], partition: Long, clock: EventLogClock): Unit =
-      // randomNr is making the test fail in some ocasions if the batch that writes the stop contains the randomNr
       if (events.map(_.payload).contains(ValueUpdated(AddOp(randomNr())))) throw IntegrationTestException else super.write(events, partition, clock)
   }
 

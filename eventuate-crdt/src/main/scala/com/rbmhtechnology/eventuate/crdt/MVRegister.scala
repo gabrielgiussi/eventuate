@@ -40,11 +40,11 @@ object MVRegister {
 
     override implicit val causalRedundancy: CausalRedundancy = new CausalRedundancy(r, r0)
 
-    override def updateState(op: Operation, state: Seq[Operation]): Seq[Operation] = op match {
-      case RemoveOp(entry) => state.filterNot(_.asInstanceOf[AddOp].entry equals entry)
-      case Clear           => Seq.empty
-      case _               => state
+    override val optimizedUpdateState: PartialFunction[(Operation, Seq[Operation]), Seq[Operation]] = {
+      case (Clear, _) => Seq.empty
+      //case (_,state)     => state
     }
+
   }
 
 }

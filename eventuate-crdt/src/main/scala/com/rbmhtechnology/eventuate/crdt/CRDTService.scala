@@ -67,9 +67,19 @@ trait CRDTServiceOps[A, B] {
   /**
    * Update phase 2 ("downstream").
    */
-  //def effect(crdt: A, operation: Any, event: DurableEvent): A
   def effect(crdt: A, op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): A
 
+  // TODO
+  /**
+   *
+   *
+   * This mechanism allows to discard stable operations, not only timestamps, if they have no
+   * impact on the semantics of the data type. For some data types like RWSet
+   * some operations become useless once other future operations become stable"
+   * @param crdt a crdt
+   * @param stable
+   * @return the crdt after being applied causal stabilization. By default it returns the same crdt unmodified
+   */
   def stable(crdt: A, stable: VectorTime) = crdt
 
   /** For testing purposes only */

@@ -16,13 +16,11 @@
 
 package com.rbmhtechnology.eventuate.crdt
 
-import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.crdt.CRDTTestDSL.VectorTimeControl
-import org.scalatest.BeforeAndAfterEach
 import org.scalatest.Matchers
 import org.scalatest.WordSpec
 
-class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
+class CRDTStableSpec extends WordSpec with Matchers {
   val crdt = CRDT.zero
   val awSet = AWSet.apply[Int]
 
@@ -77,6 +75,15 @@ class CRDTStableSpec extends WordSpec with Matchers with BeforeAndAfterEach {
       updated.value should be(Set(1, 2))
       updated.polog.log.size shouldBe 0
       updated.state.size shouldBe 2
+    }
+    "clear stable operations" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0))
+        .assign(2, vt(0, 1))
+        .stable(stableVT(1, 1))
+        .clear(vt(2, 1))
+        .value shouldBe Set()
+
     }
   }
 

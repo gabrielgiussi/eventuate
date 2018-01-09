@@ -1,10 +1,6 @@
-2. test PureOp NonCommutative framework
-
 5. document things
 
 8. RWSet, EWFlag
-
-11. Restrict the access to POLog and state, and method like addOp
 
 13. FIX ChaosTestSpec (related to ops.precondition)
 
@@ -19,6 +15,20 @@
     new AWSetService[Int]("A", endpoint.log)(system, AWSet.AWSetServiceOps)
     (related to 16 and 17)
 
+20.   override def updateState(op: Operation, state: Seq[Operation]): Seq[Operation] = {
+        // FIXME this is wrong, i need to know if the op was added to use r0 or r1
+        // option 1. polog.add returns POlog,Boolean
+        // option 2. the state is part of the Polog and add updates both (problem, i should pass a
+        // function to update state to the polog.add for AWSet for example, because the POLog will only
+        // know how to update the Seq[Operation] state.
+        // FIXME it would be better to diretly save Versioned[Operation] in the state?
+        val one = VectorTime.Zero.increment("a") // FIXME ugly but I preferred this over
+        // pasing the versioned operations, because it reflects better that the timestamp
+        // is useless because op is always on the causal future
+        val redundant = causalRedundancy.r0(Versioned(op, one))
+        state.map(Versioned(_, VectorTime.Zero)) filter redundant
+      }
+      */
 
 COMMENT IN THE PR
 15. We should be able to define specific state serialization for custom crdt like AWSet
@@ -27,3 +37,7 @@ COMMENT IN THE PR
    So i guess i would have to include an optional type in the CRDT case class to apply
    pattern matching in the CRDTSerializer
    Unless I apply pattern matching over the state directly!
+
+21. The use of VectorTime.Zero.increment("a")
+
+22. SimpleCRDT, Seq[Operation] or Seq[Versioned[Operation]]

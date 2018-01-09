@@ -60,11 +60,12 @@ object AWCart {
 
     override implicit val causalRedundancy: CausalRedundancy = new CausalRedundancy(r, r0)
 
-    override def updateState(op: Operation, state: Seq[Operation]): Seq[Operation] = op match {
-      case RemoveOp(key) => state.filterNot(_.asInstanceOf[AWCartEntry[_]].key equals key)
-      case Clear         => Seq.empty
-      case _             => state
+    override val optimizedUpdateState: PartialFunction[(Operation, Seq[Operation]), Seq[Operation]] = {
+      case (RemoveOp(key), state) => state.filterNot(_.asInstanceOf[AWCartEntry[_]].key equals key)
+      case (Clear, _)             => Seq.empty
+      case (_, state)             => state
     }
+
   }
 }
 
