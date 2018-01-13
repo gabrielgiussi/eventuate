@@ -31,8 +31,8 @@ import scala.concurrent.Future
  */
 case class AWCartEntry[A](key: A, quantity: Int) extends CRDTFormat
 
-object AWCart {
-  def apply(): SimpleCRDT = AWCartServiceOps.zero
+object AWCartService {
+  def zero(): SimpleCRDT = AWCartServiceOps.zero
 
   implicit def AWCartServiceOps[A] = new CvRDTPureOpSimple[Map[A, Int]] {
 
@@ -82,8 +82,10 @@ object AWCart {
  * @param log       Event log.
  * @tparam A [[AWCart]] key type.
  */
-class AWCartService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CvRDTPureOpSimple[Map[A, Int]])
+class AWCartService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Map[A, Int]] {
+
+  val ops = AWCartService.AWCartServiceOps[A]
 
   /**
    * Adds the given `quantity` of `key` to the OR-Cart identified by `id` and returns the updated OR-Cart content.

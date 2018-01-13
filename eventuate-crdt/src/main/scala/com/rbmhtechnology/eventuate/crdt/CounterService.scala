@@ -22,13 +22,13 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 
 import scala.concurrent.Future
 
-object Counter {
+object CounterService {
 
-  def apply[A: Integral]: A = implicitly[Integral[A]].zero
+  def zero[A: Integral]: A = implicitly[Integral[A]].zero
 
   implicit def CounterServiceOps[A: Integral] = new CRDTServiceOps[A, A] {
 
-    override def zero: A = Counter.apply[A]
+    override def zero: A = CounterService.zero[A]
 
     override def precondition: Boolean =
       false
@@ -41,14 +41,16 @@ object Counter {
 }
 
 /**
- * Replicated [[Counter]] CRDT service.
+ * Replicated Counter CRDT service.
  *
  * @param serviceId Unique id of this service.
  * @param log       Event log.
  * @tparam A Counter value type.
  */
-class CounterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, integral: Integral[A], val ops: CRDTServiceOps[A, A])
+class CounterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, integral: Integral[A])
   extends CRDTService[A, A] {
+
+  val ops = CounterService.CounterServiceOps[A]
 
   /**
    * Adds `delta` (which can also be negative) to the counter identified by `id` and returns the updated counter value.
@@ -60,6 +62,6 @@ class CounterService[A](val serviceId: String, val log: ActorRef)(implicit val s
 }
 
 /**
- * Persistent update operation used for [[Counter]].
+ * Persistent update operation used for Counter.
  */
 case class UpdateOp(delta: Any) extends CRDTFormat

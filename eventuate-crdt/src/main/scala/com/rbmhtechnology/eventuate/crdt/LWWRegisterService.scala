@@ -27,9 +27,9 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 
 import scala.concurrent.Future
 
-object LWWRegister {
+object LWWRegisterService {
 
-  def apply(): SimpleCRDT = LWWRegisterServiceOps.zero
+  def zero(): SimpleCRDT = LWWRegisterServiceOps.zero
 
   implicit def LWWOrdering[A] = new Ordering[Versioned[_]] {
     override def compare(x: Versioned[_], y: Versioned[_]): Int =
@@ -42,7 +42,7 @@ object LWWRegister {
   implicit def LWWRegisterServiceOps[A] = new CvRDTPureOpSimple[Option[A]] {
 
     override def customEval(ops: Seq[Versioned[Operation]]): Option[A] =
-      ops.sorted(LWWRegister.LWWOrdering[A]).lastOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A])
+      ops.sorted(LWWRegisterService.LWWOrdering[A]).lastOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A])
 
     val r: Redundancy = (op, _) => op.value equals Clear
 
@@ -61,8 +61,10 @@ object LWWRegister {
  * @param log Event log.
  * @tparam A [[LWWRegister]] value type.
  */
-class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CvRDTPureOpSimple[Option[A]])
+class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Option[A]] {
+
+  val ops = LWWRegisterService.LWWRegisterServiceOps[A]
 
   /**
    * Assigns a `value` to the LWW-Register identified by `id` and returns the updated LWW-Register value.

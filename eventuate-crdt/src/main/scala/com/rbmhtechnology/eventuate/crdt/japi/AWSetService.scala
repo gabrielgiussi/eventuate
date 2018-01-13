@@ -21,7 +21,7 @@ import java.util.{ Set => JSet }
 
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
-import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
+import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Set
@@ -38,7 +38,6 @@ class AWSetService[A](val serviceId: String, val log: ActorRef, implicit val sys
   extends CRDTService[AWSet[A], Set[A], JSet[A]] {
 
   import CRDTConverter._
-  import com.rbmhtechnology.eventuate.crdt.AWSet._
   import system._
 
   override protected val delegate =

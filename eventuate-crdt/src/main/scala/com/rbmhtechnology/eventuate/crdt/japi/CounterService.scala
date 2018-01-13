@@ -22,7 +22,6 @@ import java.util.concurrent.CompletionStage
 
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
-import com.rbmhtechnology.eventuate.crdt.Counter
 
 /**
  * Java API of a replicated [[Counter]] CRDT service.
@@ -36,7 +35,6 @@ class CounterService[A](val serviceId: String, val log: ActorRef, implicit val s
   extends CRDTService[A, A, A] {
 
   import CRDTConverter._
-  import Counter._
   import system._
 
   override protected val delegate =

@@ -16,20 +16,19 @@
 
 package com.rbmhtechnology.eventuate.crdt
 
-import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.crdt.CRDTTestDSL.VectorTimeControl
 import org.scalatest._
 
 class CRDTSpec extends WordSpec with Matchers {
-  val counter = Counter.apply[Int]
-  val awSet = AWSet.apply[Int]
-  val mvReg = MVRegister.apply
-  val lwwReg = LWWRegister.apply
-  val awShoppingCart = AWCart.apply
-  val tpSet = TPSet.apply[Int]
+  val counter = CounterService.zero[Int]
+  val awSet = AWSetService.zero[Int]
+  val mvReg = MVRegisterService.zero
+  val lwwReg = LWWRegisterService.zero
+  val awShoppingCart = AWCartService.zero
+  val tpSet = TPSetService.zero[Int]
 
   "A Counter" must {
-    import Counter._
+    import CounterService._
     import CRDTTestDSL.CounterCRDT
     "have a default value 0" in new VectorTimeControl {
       counter.value shouldBe 0
@@ -60,7 +59,7 @@ class CRDTSpec extends WordSpec with Matchers {
   }
 
   "An AWSet" must {
-    import AWSet._
+    import AWSetService._
     import CRDTTestDSL.AWSetCRDT
     "be empty by default" in new VectorTimeControl {
       awSet.value should be('empty)
@@ -131,7 +130,7 @@ class CRDTSpec extends WordSpec with Matchers {
 
   }
   "An MVRegister" must {
-    import MVRegister._
+    import MVRegisterService._
     import CRDTTestDSL.MVRegisterCRDT
     "not have set a value by default" in new VectorTimeControl {
       mvReg.value should be('empty)
@@ -175,7 +174,7 @@ class CRDTSpec extends WordSpec with Matchers {
     }
   }
   "An LWWRegister" must {
-    import LWWRegister._
+    import LWWRegisterService._
     import CRDTTestDSL.LWWRegisterCRDT
     "not have a value by default" in new VectorTimeControl {
       lwwReg.value should be('empty)
@@ -240,7 +239,7 @@ class CRDTSpec extends WordSpec with Matchers {
     }
   }
   "An AWCart" must {
-    import AWCart._
+    import AWCartService._
     import CRDTTestDSL.AWCartCRDT
     "be empty by default" in {
       awShoppingCart.value should be('empty)
@@ -297,7 +296,7 @@ class CRDTSpec extends WordSpec with Matchers {
     }
     "remove all entries in the causal past after a clear" in new VectorTimeControl {
       awShoppingCart
-        .add("a", 1, vt(1, 0))(AWCartServiceOps)
+        .add("a", 1, vt(1, 0))
         .add("b", 2, vt(0, 1))
         .add("a", 1, vt(2, 0))
         .clear(vt(1, 2))
@@ -307,7 +306,7 @@ class CRDTSpec extends WordSpec with Matchers {
   }
 
   "A TPSet" must {
-    import TPSet._
+    import TPSetService._
     import CRDTTestDSL.TPSetCRDT
     "be empty by default" in {
       tpSet.value shouldBe Set.empty

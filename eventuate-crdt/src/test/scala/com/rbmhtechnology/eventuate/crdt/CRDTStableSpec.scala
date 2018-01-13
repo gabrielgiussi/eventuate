@@ -22,10 +22,10 @@ import org.scalatest.WordSpec
 
 class CRDTStableSpec extends WordSpec with Matchers {
   val crdt = CRDT.zero
-  val awSet = AWSet.apply[Int]
+  val awSet = AWSetService.zero[Int]
 
   "An AWSet" should {
-    import AWSet._
+    import AWSetService._
     import CRDTTestDSL.AWSetCRDT
     "discard stable operations" in new VectorTimeControl {
       val updated = awSet
@@ -65,7 +65,7 @@ class CRDTStableSpec extends WordSpec with Matchers {
   }
 
   "A MVRegister" should {
-    import MVRegister._
+    import MVRegisterService._
     import CRDTTestDSL.MVRegisterCRDT
     "discard stable operations" in new VectorTimeControl {
       val updated = crdt
@@ -88,7 +88,7 @@ class CRDTStableSpec extends WordSpec with Matchers {
   }
 
   "A LWWRegister" should {
-    import LWWRegister._
+    import LWWRegisterService._
     import CRDTTestDSL.LWWRegisterCRDT
     "discard stable operations" in new VectorTimeControl {
       val updated = crdt
@@ -113,7 +113,7 @@ class CRDTStableSpec extends WordSpec with Matchers {
   }
 
   "An AWCart" should {
-    import AWCart._
+    import AWCartService._
     import CRDTTestDSL.AWCartCRDT
     "discard stable operations" in new VectorTimeControl {
       val updated = crdt

@@ -30,7 +30,6 @@ import scala.util.{ Failure, Try }
 class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecLike with Matchers with SingleLocationSpecLeveldb {
   "A CRDTService" must {
     "manage multiple CRDTs identified by name" in {
-      import Counter._
       val service = new CounterService[Int]("a", log)
       service.update("a", 1).await should be(1)
       service.update("b", 2).await should be(2)
@@ -38,9 +37,9 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
       service.value("b").await should be(2)
     }
     "ignore events from CRDT services of different type" in {
-      val service1 = new CounterService[Int]("a", log)(implicitly, implicitly, Counter.CounterServiceOps)
-      val service2 = new MVRegisterService[Int]("b", log)(implicitly, MVRegister.MVRegisterServiceOps)
-      val service3 = new LWWRegisterService[Int]("c", log)(implicitly, LWWRegister.LWWRegisterServiceOps)
+      val service1 = new CounterService[Int]("a", log)
+      val service2 = new MVRegisterService[Int]("b", log)
+      val service3 = new LWWRegisterService[Int]("c", log)
       service1.update("a", 1).await should be(1)
       service2.assign("a", 1).await should be(Set(1))
       service3.assign("a", 1).await should be(Some(1))
@@ -65,7 +64,6 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
   }
 
   "A CounterService" must {
-    import Counter._
     "return the default value of a Counter" in {
       val service = new CounterService[Int]("a", log)
       service.value("a").await should be(0)
@@ -85,7 +83,6 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
   }
 
   "An AWSetService" must {
-    import AWSet._
     "return the default value of an AWSet" in {
       val service = new AWSetService[Int]("a", log)
       service.value("a").await should be(Set())
@@ -117,7 +114,6 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
   }
 
   "An MVRegisterService" must {
-    import MVRegister._
     "return the default value of an MVRegister" in {
       val service = new MVRegisterService[Int]("a", log)
       service.value("a").await should be(Set())
@@ -130,7 +126,6 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
   }
 
   "An LWWRegisterService" must {
-    import LWWRegister._
     "return the default value of an LWWRegister" in {
       val service = new LWWRegisterService[Int]("a", log)
       service.value("a").await should be(None)
@@ -143,7 +138,6 @@ class CRDTServiceSpecLeveldb extends TestKit(ActorSystem("test")) with WordSpecL
   }
 
   "An AWCartService" must {
-    import AWCart._
     "return the default value of an AWCart" in {
       val service = new AWCartService[String]("a", log)
       service.value("a").await should be(Map())

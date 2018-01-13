@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.Props
 import akka.testkit.TestProbe
 import com.rbmhtechnology.eventuate._
-import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
+import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
 import com.rbmhtechnology.eventuate.crdt.CRDTService.ValueUpdated
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.log._
@@ -67,7 +67,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
     implicit val system = endpoint.system
 
     val probe = TestProbe()
-    val service = new AWSetService[String](endpoint.id, endpoint.logs("L1"))(system, AWSet.AWSetServiceOps) {
+    val service = new AWSetService[String](endpoint.id, endpoint.logs("L1")) {
       val startCounter = new AtomicInteger()
       val stopCounter = new AtomicInteger()
 

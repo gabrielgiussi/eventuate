@@ -22,7 +22,6 @@ import java.util.{ Optional => JOption }
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
-import com.rbmhtechnology.eventuate.crdt.LWWRegister
 
 import scala.compat.java8.OptionConverters._
 
@@ -38,7 +37,6 @@ class LWWRegisterService[A](val serviceId: String, val log: ActorRef, implicit v
   extends CRDTService[SimpleCRDT, Option[A], JOption[A]] {
 
   import CRDTConverter._
-  import LWWRegister._
   import system._
 
   override protected val delegate =

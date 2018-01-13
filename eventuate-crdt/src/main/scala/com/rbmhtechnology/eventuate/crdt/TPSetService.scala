@@ -20,20 +20,20 @@ import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
-import com.rbmhtechnology.eventuate.crdt.TPSet.TPSet
+import com.rbmhtechnology.eventuate.crdt.TPSetService.TPSet
 
 import scala.collection.immutable.Set
 import scala.concurrent.Future
 
-object TPSet {
+object TPSetService {
 
   type TPSet[A] = (Set[A], Set[A])
 
-  def apply[A]: TPSet[A] = (Set.empty[A], Set.empty[A])
+  def zero[A]: TPSet[A] = (Set.empty[A], Set.empty[A])
 
   implicit def TPSetServiceOps[A] = new CRDTServiceOps[TPSet[A], Set[A]] {
 
-    override def zero: TPSet[A] = TPSet.apply[A]
+    override def zero: TPSet[A] = TPSetService.zero[A]
 
     override def eval(crdt: TPSet[A]): Set[A] = crdt._1
 
@@ -49,7 +49,9 @@ object TPSet {
 
 }
 
-class TPSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CRDTServiceOps[TPSet[A], Set[A]]) extends CRDTService[TPSet[A], Set[A]] {
+class TPSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem) extends CRDTService[TPSet[A], Set[A]] {
+
+  val ops = TPSetService.TPSetServiceOps[A]
 
   def add(id: String, entry: A): Future[Set[A]] =
     op(id, AddOp(entry))

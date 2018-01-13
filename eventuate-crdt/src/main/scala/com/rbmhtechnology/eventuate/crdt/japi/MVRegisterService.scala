@@ -21,25 +21,23 @@ import java.util.{ Set => JSet }
 
 import akka.actor.{ ActorRef, ActorSystem }
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
-import com.rbmhtechnology.eventuate.crdt.MVRegister
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable.Set
 
 /**
- * Java API of a replicated [[MVRegister]] CRDT service.
+ * Java API of a replicated [[MVRegisterService]] CRDT service.
  *
  * @param serviceId Unique id of this service.
  * @param log Event log.
  * @param system Actor system.
- * @tparam A [[MVRegister]] value type.
+ * @tparam A [[MVRegisterService]] value type.
  */
 class MVRegisterService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Set[A], JSet[A]] {
 
   import CRDTConverter._
   import system._
-  import MVRegister._
 
   override protected val delegate =
     new com.rbmhtechnology.eventuate.crdt.MVRegisterService[A](serviceId, log)

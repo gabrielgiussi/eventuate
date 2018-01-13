@@ -17,17 +17,17 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import akka.actor._
-import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
+import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
 
 import scala.collection.immutable.Set
 import scala.concurrent.Future
 
-object AWSet {
+object AWSetService {
 
   type AWSet[A] = CRDT[Set[A]]
 
-  def apply[A]: AWSet[A] = CRDT(Set.empty) // TODO we should be able to define a specific implementation of Set
+  def zero[A]: AWSet[A] = CRDT(Set.empty) // TODO we should be able to define a specific implementation of Set
 
   implicit def AWSetServiceOps[A] = new CvRDTPureOp[Set[A], Set[A]] {
 
@@ -53,7 +53,7 @@ object AWSet {
     override protected def stabilizeState(state: Set[A], stableOps: Seq[Operation]): Set[A] =
       state ++ stableOps.map(_.asInstanceOf[AddOp].entry.asInstanceOf[A]).toSet
 
-    override def zero: AWSet[A] = AWSet.apply[A]
+    override def zero: AWSet[A] = AWSetService.zero[A]
 
     override def updateState(op: Operation, state: Set[A]): Set[A] = op match {
       case RemoveOp(entry) => state - entry.asInstanceOf[A]
@@ -71,8 +71,10 @@ object AWSet {
  * @param log Event log.
  * @tparam A [[AWSet]] entry type.
  */
-class AWSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CvRDTPureOp[Set[A], Set[A]])
+class AWSetService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem)
   extends CRDTService[AWSet[A], Set[A]] {
+
+  val ops = AWSetService.AWSetServiceOps[A]
 
   /**
    * Adds `entry` to the OR-Set identified by `id` and returns the updated entry set.

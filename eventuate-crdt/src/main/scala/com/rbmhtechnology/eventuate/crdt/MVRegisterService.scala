@@ -26,9 +26,9 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 
 import scala.concurrent.Future
 
-object MVRegister {
+object MVRegisterService {
 
-  def apply(): SimpleCRDT = MVRegisterServiceOps.zero
+  def zero(): SimpleCRDT = MVRegisterServiceOps.zero
 
   implicit def MVRegisterServiceOps[A] = new CvRDTPureOpSimple[Set[A]] {
 
@@ -42,7 +42,7 @@ object MVRegister {
 
     override val optimizedUpdateState: PartialFunction[(Operation, Seq[Operation]), Seq[Operation]] = {
       case (Clear, _) => Seq.empty
-      //case (_,state)     => state
+      case (_, state) => state
     }
 
   }
@@ -50,14 +50,16 @@ object MVRegister {
 }
 
 /**
- * Replicated [[MVRegister]] CRDT service.
+ * Replicated [[MVRegisterService]] CRDT service.
  *
  * @param serviceId Unique id of this service.
  * @param log Event log.
- * @tparam A [[MVRegister]] value type.
+ * @tparam A [[MVRegisterService]] value type.
  */
-class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem, val ops: CvRDTPureOpSimple[Set[A]])
+class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Set[A]] {
+
+  val ops = MVRegisterService.MVRegisterServiceOps[A]
 
   /**
    * Assigns a `value` to the MV-Register identified by `id` and returns the updated MV-Register value.
@@ -72,6 +74,6 @@ class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit va
 }
 
 /**
- * Persistent assign operation used for [[MVRegister]] and [[LWWRegister]].
+ * Persistent assign operation used for [[MVRegisterService]] and [[LWWRegister]].
  */
 case class AssignOp(value: Any) extends CRDTFormat

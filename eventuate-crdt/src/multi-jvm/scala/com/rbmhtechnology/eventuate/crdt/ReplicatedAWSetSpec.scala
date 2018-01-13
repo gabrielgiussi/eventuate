@@ -21,7 +21,7 @@ import akka.remote.testkit._
 import akka.remote.transport.ThrottlerTransportAdapter.Direction
 import akka.testkit.TestProbe
 import com.rbmhtechnology.eventuate._
-import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
+import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.typesafe.config.ConfigFactory
 
@@ -59,7 +59,7 @@ abstract class ReplicatedAWSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
 
       runOn(nodeA) {
         val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
-        val service = new AWSetService[Int]("A", endpoint.log)(system, AWSet.AWSetServiceOps) { // FIXME i don't need to pass the ops before
+        val service = new AWSetService[Int]("A", endpoint.log) {
           override private[crdt] def onChange(crdt: AWSet[Int], operation: Option[Operation]): Unit = probe.ref ! ops.value(crdt)
         }
 
@@ -85,7 +85,7 @@ abstract class ReplicatedAWSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
 
       runOn(nodeB) {
         val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
-        val service = new AWSetService[Int]("B", endpoint.log)(system, AWSet.AWSetServiceOps) {
+        val service = new AWSetService[Int]("B", endpoint.log) {
           override private[crdt] def onChange(crdt: AWSet[Int], operation: Option[Operation]): Unit = probe.ref ! ops.value(crdt)
         }
 

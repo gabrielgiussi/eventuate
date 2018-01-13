@@ -17,10 +17,10 @@
 package com.rbmhtechnology.eventuate.crdt
 
 import com.rbmhtechnology.eventuate.VectorTime
-import com.rbmhtechnology.eventuate.crdt.AWSet.AWSet
+import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
-import com.rbmhtechnology.eventuate.crdt.TPSet.TPSet
+import com.rbmhtechnology.eventuate.crdt.TPSetService.TPSet
 
 import scala.collection.immutable.Set
 
@@ -56,6 +56,7 @@ object CRDTTestDSL {
   }
 
   implicit class AWSetCRDT[A](crdt: AWSet[A]) extends EnhancedCvRDT[Set[A]](crdt) {
+
     def add(value: A, vectorTime: VectorTime)(implicit ops: CvRDTPureOp[Set[A], Set[A]]) = ops.effect(crdt, AddOp(value), vectorTime)
     def remove(value: A, vectorTime: VectorTime)(implicit ops: CvRDTPureOp[Set[A], Set[A]]) = ops.effect(crdt, RemoveOp(value), vectorTime)
     def clear(vectorTime: VectorTime)(implicit ops: CvRDTPureOp[Set[A], Set[A]]) = ops.effect(crdt, Clear, vectorTime)
