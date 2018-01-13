@@ -20,7 +20,7 @@ import akka.actor._
 import akka.testkit._
 import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
-import com.rbmhtechnology.eventuate.{ DurableEvent, SingleLocationSpecLeveldb }
+import com.rbmhtechnology.eventuate.SingleLocationSpecLeveldb
 import com.rbmhtechnology.eventuate.utilities._
 import org.scalatest._
 

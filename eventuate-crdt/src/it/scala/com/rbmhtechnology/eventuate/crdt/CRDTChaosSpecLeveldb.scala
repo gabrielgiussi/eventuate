@@ -51,7 +51,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
 
   val customConfig = ConfigFactory.parseString(
     """
-      |eventuate.log.write-batch-size = 3
+      |eventuate.log.write-batch-size = 1
       |eventuate.log.replication.retry-delay = 100ms
     """.stripMargin)
 
