@@ -55,7 +55,7 @@ object AWSetService {
 
     override def zero: AWSet[A] = AWSetService.zero[A]
 
-    override def updateState(op: Operation, state: Set[A]): Set[A] = op match {
+    override def updateState(op: Operation, redundant: Boolean, state: Set[A]): Set[A] = op match {
       case RemoveOp(entry) => state - entry.asInstanceOf[A]
       case Clear           => Set.empty
       case _               => state

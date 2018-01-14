@@ -58,9 +58,11 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
    * @param red the data type specific relations for causal redundancy
    * @return the resulting POLog after adding and pruning. Note that the operation may not be present if it was redundant
    */
-  def add(op: Versioned[Operation])(implicit red: CausalRedundancy): POLog = {
-    if (!red.r(op, this)) copy(prune(log + op, op, red.r1))
-    else copy(prune(log, op, red.r0))
+  def add(op: Versioned[Operation])(implicit red: CausalRedundancy): (POLog, Boolean) = { // TODO document the boolean
+    val redundant = red.r(op, this)
+    val updatedLog = if (redundant) log else log + op
+    val r = red.redundancyFilter(redundant)
+    (copy(prune(updatedLog, op, r)), redundant)
   }
 
   /**

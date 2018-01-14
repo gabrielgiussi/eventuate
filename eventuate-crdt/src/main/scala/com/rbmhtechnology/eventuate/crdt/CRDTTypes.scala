@@ -52,6 +52,9 @@ object CRDTTypes {
      * For most data types, the relations r0 and r1 will be equal
      */
     def this(r: Redundancy, r0: Redundancy_) = this(r, r0, r0)
+
+    // TODO doc
+    def redundancyFilter(redundant: Boolean): Redundancy_ = if (redundant) r0 else r1
   }
 
   /**

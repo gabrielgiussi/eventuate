@@ -20,6 +20,7 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.Versioned
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Redundancy_
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 
 /**
@@ -44,7 +45,7 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
    * @param state the current CRDT state
    * @return the updated state
    */
-  protected def updateState(op: Operation, state: C): C
+  protected def updateState(op: Operation, redundant: Boolean, state: C): C
 
   /**
    * Adds the operation to the POLog using the causal redundancy relations and also updates the state
@@ -59,8 +60,8 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
    */
   final def effect(crdt: CRDT[C], op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): CRDT[C] = {
     val versionedOp = Versioned(op, vt, systemTimestamp, creator)
-    val updatedPolog = crdt.polog.add(versionedOp)
-    val updatedState = updateState(op, crdt.state)
+    val (updatedPolog, redundant) = crdt.polog.add(versionedOp)
+    val updatedState = updateState(op, redundant, crdt.state)
     crdt.copy(updatedPolog, updatedState)
   }
 
@@ -155,14 +156,14 @@ trait CvRDTPureOpSimple[B] extends CvRDTPureOp[Seq[Operation], B] {
   def optimizedUpdateState: PartialFunction[(Operation, Seq[Operation]), Seq[Operation]] = PartialFunction.empty
 
   // TODO
-  private def defaultUpdateState(stateAndOp: (Operation, Seq[Operation])) = {
+  private def defaultUpdateState(redundancy: Redundancy_)(stateAndOp: (Operation, Seq[Operation])) = {
     val (op, state) = stateAndOp
-    val one = VectorTime.Zero.increment("a") // TODO
-    val redundant = causalRedundancy.r0(Versioned(op, one)) // FIXME we are always using r0
+    val one = VectorTime.Zero.increment("a")
+    val redundant = redundancy(Versioned(op, one))
     state.map(Versioned(_, VectorTime.Zero)) filterNot redundant map (_.value)
   }
 
-  override final protected def updateState(op: Operation, state: Seq[Operation]): Seq[Operation] =
-    optimizedUpdateState.applyOrElse((op, state), defaultUpdateState)
+  override final protected def updateState(op: Operation, redundant: Boolean, state: Seq[Operation]): Seq[Operation] =
+    optimizedUpdateState.applyOrElse((op, state), defaultUpdateState(causalRedundancy.redundancyFilter(redundant)))
 
 }

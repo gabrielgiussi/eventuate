@@ -2,14 +2,7 @@
 
 8. RWSet, EWFlag
 
-13. FIX ChaosTestSpec (related to ops.precondition)
-
 16. FIX the need of import the object that contains the ops def for instantiate the service (before this wasn't needed)
-
-17. FIX the need of this two imports in tests
-    import TPSet._
-    import CRDTUtils.TPSetCRDT
-    (related to 16)
 
 18. Fix the need of specify the ops in ReplicatedAWSetSpec
     new AWSetService[Int]("A", endpoint.log)(system, AWSet.AWSetServiceOps)
