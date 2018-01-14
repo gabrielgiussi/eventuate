@@ -25,8 +25,7 @@ class CRDTStableSpec extends WordSpec with Matchers {
   val awSet = AWSetService.zero[Int]
 
   "An AWSet" should {
-    import AWSetService._
-    import CRDTTestDSL.AWSetCRDT
+    import CRDTTestDSL.AWSetCRDT._
     "discard stable operations" in new VectorTimeControl {
       val updated = awSet
         .add(1, vt(1, 0))
@@ -65,8 +64,7 @@ class CRDTStableSpec extends WordSpec with Matchers {
   }
 
   "A MVRegister" should {
-    import MVRegisterService._
-    import CRDTTestDSL.MVRegisterCRDT
+    import CRDTTestDSL.MVRegisterCRDT._
     "discard stable operations" in new VectorTimeControl {
       val updated = crdt
         .assign(1, vt(1, 0))
@@ -88,8 +86,7 @@ class CRDTStableSpec extends WordSpec with Matchers {
   }
 
   "A LWWRegister" should {
-    import LWWRegisterService._
-    import CRDTTestDSL.LWWRegisterCRDT
+    import CRDTTestDSL.LWWRegisterCRDT._
     "discard stable operations" in new VectorTimeControl {
       val updated = crdt
         .assign(1, vt(1, 0), 0, "emitter1")
@@ -113,8 +110,7 @@ class CRDTStableSpec extends WordSpec with Matchers {
   }
 
   "An AWCart" should {
-    import AWCartService._
-    import CRDTTestDSL.AWCartCRDT
+    import CRDTTestDSL.AWCartCRDT._
     "discard stable operations" in new VectorTimeControl {
       val updated = crdt
         .add("a", 1, vt(1, 0))

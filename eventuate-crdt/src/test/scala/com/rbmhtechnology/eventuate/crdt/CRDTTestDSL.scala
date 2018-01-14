@@ -18,7 +18,6 @@ package com.rbmhtechnology.eventuate.crdt
 
 import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
-import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.TPSetService.TPSet
 
@@ -28,52 +27,34 @@ object CRDTTestDSL {
 
   case class StableVectorTime(vt: VectorTime)
 
-  class EnhancedCRDT[A](crdt: A) {
-    def eval[B](implicit ops: CRDTServiceOps[A, B]): B = ops.eval(crdt)
+  trait EnhancedCRDT[C] {
+    def crdt: C
 
-    def value[B](implicit ops: CRDTServiceOps[A, B]): B = eval(ops)
+    def eval[B](implicit ops: CRDTServiceOps[C, B]): B = ops.eval(crdt)
+
+    def value[B](implicit ops: CRDTServiceOps[C, B]): B = eval(ops)
   }
 
-  class EnhancedCvRDT[A](crdt: CRDT[A]) extends EnhancedCRDT[CRDT[A]](crdt) {
+  trait Stable[C] {
+    def crdt: C
 
-    def stable(stable: StableVectorTime)(implicit ops: CvRDTPureOp[A, _]) = ops.stable(crdt, stable.vt)
-
+    def stable(stable: StableVectorTime)(implicit ops: CRDTServiceOps[C, _]) = ops.stable(crdt, stable.vt)
   }
 
-  implicit class TPSetCRDT[A](crdt: TPSet[A]) extends EnhancedCRDT(crdt) {
-
-    def add(entry: A, t: VectorTime)(implicit ops: CRDTServiceOps[TPSet[A], Set[A]]) = ops.effect(crdt, AddOp(entry), t)
-
-    def remove(entry: A, t: VectorTime)(implicit ops: CRDTServiceOps[TPSet[A], Set[A]]) = ops.effect(crdt, RemoveOp(entry), t)
-
+  trait Clear[C] {
+    def crdt: C
+    def clear(t: VectorTime)(implicit ops: CRDTServiceOps[C, _]) = ops.effect(crdt, Clear, t)
   }
 
-  implicit class AWCartCRDT[A](crdt: SimpleCRDT) extends EnhancedCvRDT[Seq[Operation]](crdt) {
+  class SetCRDT[C](crdt: C) {
 
-    def add(key: A, quantity: Int, timestamp: VectorTime)(implicit ops: CvRDTPureOpSimple[_]) = ops.effect(crdt, AddOp(AWCartEntry(key, quantity)), timestamp)
-    def remove(key: A, t: VectorTime)(implicit ops: CvRDTPureOpSimple[Map[A, Int]]) = ops.effect(crdt, RemoveOp(key), t)
-    def clear(vectorTime: VectorTime)(implicit ops: CvRDTPureOpSimple[Map[A, Int]]) = ops.effect(crdt, Clear, vectorTime)
+    def add[A](value: A, vectorTime: VectorTime)(implicit ops: CRDTServiceOps[C, _]) = ops.effect(crdt, AddOp(value), vectorTime)
+    def remove[A](value: A, vectorTime: VectorTime)(implicit ops: CRDTServiceOps[C, _]) = ops.effect(crdt, RemoveOp(value), vectorTime)
   }
 
-  implicit class AWSetCRDT[A](crdt: AWSet[A]) extends EnhancedCvRDT[Set[A]](crdt) {
-
-    def add(value: A, vectorTime: VectorTime)(implicit ops: CvRDTPureOp[Set[A], Set[A]]) = ops.effect(crdt, AddOp(value), vectorTime)
-    def remove(value: A, vectorTime: VectorTime)(implicit ops: CvRDTPureOp[Set[A], Set[A]]) = ops.effect(crdt, RemoveOp(value), vectorTime)
-    def clear(vectorTime: VectorTime)(implicit ops: CvRDTPureOp[Set[A], Set[A]]) = ops.effect(crdt, Clear, vectorTime)
-  }
-
-  implicit class CounterCRDT[A: Integral](crdt: A) extends EnhancedCRDT[A](crdt) {
-    def update(delta: A, vt: VectorTime)(implicit ops: CRDTServiceOps[A, A]) = ops.effect(crdt, UpdateOp(delta), vt)
-  }
-
-  implicit class LWWRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedCvRDT[Seq[Operation]](crdt) {
-    def assign(value: A, vectorTime: VectorTime, timestamp: Long, creator: String)(implicit ops: CvRDTPureOpSimple[Option[A]]) = ops.effect(crdt, AssignOp(value), vectorTime, timestamp, creator)
-    def clear(t: VectorTime)(implicit ops: CvRDTPureOpSimple[Option[A]]) = ops.effect(crdt, Clear, t)
-  }
-
-  implicit class MVRegisterCRDT[A](crdt: SimpleCRDT) extends EnhancedCvRDT[Seq[Operation]](crdt) {
-    def assign(value: A, vectorTime: VectorTime)(implicit ops: CvRDTPureOpSimple[Set[A]]) = ops.effect(crdt, AssignOp(value), vectorTime)
-    def clear(t: VectorTime)(implicit ops: CvRDTPureOpSimple[Set[A]]) = ops.effect(crdt, Clear, t)
+  class RegisterCRDT[C](crdt: C) {
+    def assign[A](value: A, vectorTime: VectorTime, timestamp: Long = 0L, creator: String = "")(implicit ops: CRDTServiceOps[C, _]) = ops.effect(crdt, AssignOp(value), vectorTime, timestamp, creator)
+    def clear(t: VectorTime)(implicit ops: CRDTServiceOps[C, _]) = ops.effect(crdt, Clear, t)
   }
 
   trait VectorTimeControl {
@@ -99,6 +80,41 @@ object CRDTTestDSL {
     def clearVTHistory() = {
       stable = Set.empty
       emitted = Set.empty
+    }
+  }
+
+  object MVRegisterCRDT {
+    implicit val ops = MVRegisterService.MVRegisterServiceOps
+    implicit class MVRegisterCRDT(val crdt: SimpleCRDT) extends RegisterCRDT(crdt) with Stable[SimpleCRDT] with EnhancedCRDT[SimpleCRDT]
+  }
+
+  object LWWRegisterCRDT {
+    implicit val ops = LWWRegisterService.LWWRegisterServiceOps
+    implicit class LWWRegisterCRDT(val crdt: SimpleCRDT) extends RegisterCRDT(crdt) with Stable[SimpleCRDT] with EnhancedCRDT[SimpleCRDT]
+  }
+
+  object CounterCRDT {
+    implicit def ops[A: Integral] = CounterService.CounterServiceOps[A]
+    implicit class CounterCRDT[A: Integral](val crdt: A) extends EnhancedCRDT[A] {
+      def update(delta: A, vt: VectorTime)(implicit ops: CRDTServiceOps[A, A]) = ops.effect(crdt, UpdateOp(delta), vt)
+    }
+  }
+
+  object AWSetCRDT {
+    implicit def ops[A] = AWSetService.AWSetServiceOps[A]
+    implicit class AWSetCRDT[A](val crdt: AWSet[A]) extends SetCRDT[AWSet[A]](crdt) with EnhancedCRDT[AWSet[A]] with Clear[AWSet[A]] with Stable[AWSet[A]]
+  }
+
+  object TPSetCRDT {
+    implicit def ops[A] = TPSetService.TPSetServiceOps[A]
+    implicit class TPSetCRDT[A](val crdt: TPSet[A]) extends SetCRDT[TPSet[A]](crdt) with EnhancedCRDT[TPSet[A]]
+  }
+
+  object AWCartCRDT {
+    implicit def ops[A] = AWCartService.AWCartServiceOps[A]
+    implicit class AWCartCRDT[A](val crdt: SimpleCRDT) extends Clear[SimpleCRDT] with Stable[SimpleCRDT] with EnhancedCRDT[SimpleCRDT] {
+      def add(key: A, quantity: Int, timestamp: VectorTime) = ops.effect(crdt, AddOp(AWCartEntry(key, quantity)), timestamp)
+      def remove(key: A, t: VectorTime) = ops.effect(crdt, RemoveOp(key), t)
     }
   }
 
