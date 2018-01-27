@@ -138,8 +138,6 @@ case class VectorTime(value: Map[String, Long] = Map.empty) {
   def gt(that: VectorTime): Boolean =
     >(that)
 
-  def stableAt(stable: VectorTime): Boolean = this <= stable
-
   override def toString: String =
     s"VectorTime(${value.mkString(",")})"
 }

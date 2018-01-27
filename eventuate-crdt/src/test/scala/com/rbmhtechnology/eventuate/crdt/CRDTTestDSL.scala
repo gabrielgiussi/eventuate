@@ -20,12 +20,11 @@ import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 import com.rbmhtechnology.eventuate.crdt.TPSetService.TPSet
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 
 import scala.collection.immutable.Set
 
 object CRDTTestDSL {
-
-  case class StableVectorTime(vt: VectorTime)
 
   trait EnhancedCRDT[C] {
     def crdt: C
@@ -38,7 +37,7 @@ object CRDTTestDSL {
   trait Stable[C] {
     def crdt: C
 
-    def stable(stable: StableVectorTime)(implicit ops: CRDTServiceOps[C, _]) = ops.stable(crdt, stable.vt)
+    def stable(stable: TCStable)(implicit ops: CRDTServiceOps[C, _]) = ops.stable(crdt, stable)
   }
 
   trait Clear[C] {
@@ -71,10 +70,10 @@ object CRDTTestDSL {
       newVT
     }
 
-    def stableVT(t1: Long, t2: Long): StableVectorTime = {
+    def stableVT(t1: Long, t2: Long): TCStable = {
       val newVT = _vt(t1, t2)
       stable += newVT
-      StableVectorTime(newVT)
+      TCStable(newVT)
     }
 
     def clearVTHistory() = {

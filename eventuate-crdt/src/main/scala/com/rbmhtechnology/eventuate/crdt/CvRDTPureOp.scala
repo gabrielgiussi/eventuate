@@ -22,6 +22,7 @@ import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.Versioned
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Redundancy_
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 
 /**
  * Type-class for pure-op based CRDT.
@@ -76,7 +77,7 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
    * @param stable
    * @return
    */
-  protected def stabilize(polog: POLog, stable: VectorTime): POLog = polog
+  protected def stabilize(polog: POLog, stable: TCStable): POLog = polog
 
   /**
    * Updates the current [[CRDT.state]] with the sequence of stable operations that were removed
@@ -101,7 +102,7 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
    * @param stable a stable VectorTime fed by the middleware
    * @return a possible optimized crdt after discarding operations and removing timestamps
    */
-  override def stable(crdt: CRDT[C], stable: VectorTime) = {
+  override def stable(crdt: CRDT[C], stable: TCStable) = {
     val (stabilizedPOLog, stableOps) = stabilize(crdt.polog, stable) stable (stable)
     val stabilizedState = stabilizeState(crdt.state, stableOps)
     crdt.copy(stabilizedPOLog, stabilizedState)

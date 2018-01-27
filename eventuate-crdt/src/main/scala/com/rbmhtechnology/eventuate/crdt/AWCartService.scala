@@ -37,7 +37,7 @@ object AWCartService {
   implicit def AWCartServiceOps[A] = new CvRDTPureOpSimple[Map[A, Int]] {
 
     override def customEval(ops: Seq[Versioned[Operation]]): Map[A, Int] = ops.foldLeft(Map.empty[A, Int]) {
-      case (acc, Versioned(AddOp(AWCartEntry(key: A, quantity)), _, _, _)) => acc.get(key) match {
+      case (acc, Versioned(AddOp(AWCartEntry(key: A @unchecked, quantity)), _, _, _)) => acc.get(key) match {
         case Some(c) => acc + (key -> (c + quantity))
         case None    => acc + (key -> quantity)
       }

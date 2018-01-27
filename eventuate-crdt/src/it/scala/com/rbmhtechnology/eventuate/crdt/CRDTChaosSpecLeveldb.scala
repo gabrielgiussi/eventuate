@@ -49,6 +49,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
       if (events.map(_.payload).contains(ValueUpdated(AddOp(randomNr())))) throw IntegrationTestException else super.write(events, partition, clock)
   }
 
+  // FIXME allow use write-batch-size > 1
   val customConfig = ConfigFactory.parseString(
     """
       |eventuate.log.write-batch-size = 1

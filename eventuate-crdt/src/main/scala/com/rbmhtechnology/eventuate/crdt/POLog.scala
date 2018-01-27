@@ -21,6 +21,7 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.Versioned
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Redundancy_
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 
 /**
  * A Partial Ordered Log which retains all invoked operations together with their timestamps.
@@ -75,9 +76,9 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
    *         at the received [[VectorTime]] and the set of operations that are stable
    *         at the received [[VectorTime]]
    */
-  def stable(stable: VectorTime): (POLog, Seq[Operation]) = {
+  def stable(stable: TCStable): (POLog, Seq[Operation]) = {
     val (stableOps, nonStableOps) = log.foldLeft((Seq.empty[Operation], Seq.empty[Versioned[Operation]])) {
-      case ((stableOps, nonStableOps), op) if (op.vectorTimestamp.stableAt(stable)) => (stableOps :+ op.value, nonStableOps)
+      case ((stableOps, nonStableOps), op) if (stable.isStable(op.vectorTimestamp)) => (stableOps :+ op.value, nonStableOps)
       case ((stableOps, nonStableOps), op) => (stableOps, nonStableOps :+ op)
     }
     (copy(log = nonStableOps.toSet), stableOps)

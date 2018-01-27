@@ -23,7 +23,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
-import com.rbmhtechnology.eventuate.log.StabilityChecker.SubscribeTCStable
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 import com.typesafe.config.Config
 
 import scala.concurrent.{ ExecutionContext, Future }
@@ -80,7 +80,7 @@ trait CRDTServiceOps[A, B] {
    * @param stable
    * @return the crdt after being applied causal stabilization. By default it returns the same crdt unmodified
    */
-  def stable(crdt: A, stable: VectorTime) = crdt
+  def stable(crdt: A, stable: TCStable) = crdt
 
   /** For testing purposes only */
   //TODO def timestamps(crdt: CRDTSPI[B]): Set[VectorTime] = crdt.polog.log.map(_.vectorTimestamp)
@@ -94,7 +94,6 @@ object CRDTService {
    */
   case class ValueUpdated(operation: Operation) extends CRDTFormat
 
-  case class Stable(timestamp: Any) extends CRDTFormat // FIXME delete
 }
 
 private class CRDTServiceSettings(config: Config) {
@@ -224,8 +223,7 @@ trait CRDTService[A, B] {
     var crdt: A =
       ops.zero
 
-    // TODO where do this?
-    eventLog ! SubscribeTCStable(self)
+    //eventLog ! SubscribeTCStable(self)
 
     override def stateSync: Boolean = ops.precondition
 
@@ -253,20 +251,13 @@ trait CRDTService[A, B] {
           case Failure(err) =>
             sender() ! Status.Failure(err)
         }
-      //case GetTimestamps(id) => sender() ! GetTimestampsReply(ops.timestamps(crdt)) TODO
-      case MarkStable(`crdtId`, t) => persist(Stable(t)) {
-        case Success(evt) =>
-          sender() ! MarkStableReply(crdtId)
-        case Failure(err) =>
-          sender() ! Status.Failure(err)
-      }
+      case s: TCStable => crdt = ops.stable(crdt, s)
     }
 
     override def onEvent = {
       case evt @ ValueUpdated(operation) =>
         crdt = ops.effect(crdt, operation, lastHandledEvent.vectorTimestamp, lastHandledEvent.systemTimestamp, lastHandledEvent.emitterId)
         context.parent ! OnChange(crdt, Some(operation))
-      // case Stable(timestamp) if (lastHandledEvent.localLogId == lastHandledEvent.processId) => crdt = ops.stable(crdt, timestamp.asInstanceOf[VectorTime]) TODO
     }
 
     override def onSnapshot = {
