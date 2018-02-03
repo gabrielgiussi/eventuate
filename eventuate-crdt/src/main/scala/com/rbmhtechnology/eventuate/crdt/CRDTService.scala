@@ -23,10 +23,11 @@ import akka.pattern.ask
 import akka.util.Timeout
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
+import com.rbmhtechnology.eventuate.log.StabilityChannel.SubscribeTCStable
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 import com.typesafe.config.Config
 
-import scala.concurrent.{ ExecutionContext, Future }
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import scala.language.higherKinds
 import scala.util._
@@ -82,8 +83,7 @@ trait CRDTServiceOps[A, B] {
    */
   def stable(crdt: A, stable: TCStable) = crdt
 
-  /** For testing purposes only */
-  //TODO def timestamps(crdt: CRDTSPI[B]): Set[VectorTime] = crdt.polog.log.map(_.vectorTimestamp)
+  def subscribeToStable: Boolean = false
 }
 
 object CRDTService {
@@ -223,7 +223,7 @@ trait CRDTService[A, B] {
     var crdt: A =
       ops.zero
 
-    //eventLog ! SubscribeTCStable(self)
+    if (ops.subscribeToStable) eventLog ! SubscribeTCStable(self)
 
     override def stateSync: Boolean = ops.precondition
 
@@ -251,7 +251,9 @@ trait CRDTService[A, B] {
           case Failure(err) =>
             sender() ! Status.Failure(err)
         }
-      case s: TCStable => crdt = ops.stable(crdt, s)
+      case s: TCStable =>
+        crdt = ops.stable(crdt, s)
+        onStable(crdt,s)
     }
 
     override def onEvent = {
@@ -294,4 +296,6 @@ trait CRDTService[A, B] {
 
   /** For testing purposes only */
   private[crdt] def onChange(crdt: A, operation: Option[Operation]): Unit = ()
+
+  private[crdt] def onStable(crdt: A, stable: TCStable): Unit = ()
 }

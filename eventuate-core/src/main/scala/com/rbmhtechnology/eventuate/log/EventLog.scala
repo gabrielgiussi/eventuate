@@ -16,18 +16,18 @@
 
 package com.rbmhtechnology.eventuate.log
 
+import java.util.concurrent.TimeUnit
+
 import akka.actor._
 import akka.dispatch.MessageDispatcher
 import akka.event.{ Logging, LoggingAdapter }
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.EventsourcingProtocol._
 import com.rbmhtechnology.eventuate.ReplicationProtocol._
-import com.rbmhtechnology.eventuate.log.StabilityChecker.MostRecentlyViewedTimestamps
-import com.rbmhtechnology.eventuate.log.StabilityChecker.ScheduleStabilityNotification
-import com.rbmhtechnology.eventuate.log.StabilityChecker.SubscribeTCStable
-import com.rbmhtechnology.eventuate.log.StabilityChecker.TCStable
-import com.rbmhtechnology.eventuate.log.StabilityChecker.TriggerStabilityCheck
-import com.rbmhtechnology.eventuate.log.StabilityChecker.UnsubscribeTCStable
+import com.rbmhtechnology.eventuate.log.StabilityChannel.SubscribeTCStable
+import com.rbmhtechnology.eventuate.log.StabilityChannel.UnsubscribeTCStable
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.MostRecentlyViewedTimestamps
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.StableVT
 import com.rbmhtechnology.eventuate.snapshot.filesystem._
 import com.typesafe.config.Config
 
@@ -121,9 +121,11 @@ case class DeletionMetadata(toSequenceNr: Long, remoteLogIds: Set[String])
  * Result of an event batch-read operation.
  *
  * @param events Read event batch.
- * @param to Last read position in the event log.
+ * @param to     Last read position in the event log.
  */
 case class BatchReadResult(events: Seq[DurableEvent], to: Long) extends DurableEventBatch
+
+case object GiveMeTCStable
 
 /**
  * Indicates that a storage backend doesn't support physical deletion of events.
@@ -135,7 +137,8 @@ private class PhysicalDeletionNotSupportedException extends UnsupportedOperation
  *
  * @tparam A Event log state type.
  */
-trait EventLogSPI[A] { this: Actor =>
+trait EventLogSPI[A] {
+  this: Actor =>
   /**
    * Event log settings.
    */
@@ -180,8 +183,8 @@ trait EventLogSPI[A] { this: Actor =>
    * within the sequence number bounds `fromSequenceNr` and `toSequenceNr`.
    *
    * @param fromSequenceNr sequence number to start reading (inclusive).
-   * @param toSequenceNr sequence number to stop reading (inclusive)
-   *                     or earlier if `max` events have already been read.
+   * @param toSequenceNr   sequence number to stop reading (inclusive)
+   *                       or earlier if `max` events have already been read.
    */
   def read(fromSequenceNr: Long, toSequenceNr: Long, max: Int): Future[BatchReadResult]
 
@@ -190,8 +193,8 @@ trait EventLogSPI[A] { this: Actor =>
    * `max` events must be returned that are within the sequence number bounds `fromSequenceNr` and `toSequenceNr`.
    *
    * @param fromSequenceNr sequence number to start reading (inclusive).
-   * @param toSequenceNr sequence number to stop reading (inclusive)
-   *                     or earlier if `max` events have already been read.
+   * @param toSequenceNr   sequence number to stop reading (inclusive)
+   *                       or earlier if `max` events have already been read.
    */
   def read(fromSequenceNr: Long, toSequenceNr: Long, max: Int, aggregateId: String): Future[BatchReadResult]
 
@@ -200,8 +203,8 @@ trait EventLogSPI[A] { this: Actor =>
    * within the sequence number bounds `fromSequenceNr` and `toSequenceNr` and that pass the given `filter`.
    *
    * @param fromSequenceNr sequence number to start reading (inclusive).
-   * @param toSequenceNr sequence number to stop reading (inclusive)
-   *                     or earlier if `max` events have already been read.
+   * @param toSequenceNr   sequence number to stop reading (inclusive)
+   *                       or earlier if `max` events have already been read.
    */
   def replicationRead(fromSequenceNr: Long, toSequenceNr: Long, max: Int, scanLimit: Int, filter: DurableEvent => Boolean): Future[BatchReadResult]
 
@@ -251,10 +254,12 @@ trait EventLogSPI[A] { this: Actor =>
  * @tparam A Event log state type (a subtype of [[EventLogState]]).
  */
 abstract class EventLog[A <: EventLogState](id: String) extends Actor with EventLogSPI[A] with Stash {
+
   import NotificationChannel._
   import EventLog._
 
   private case class RecoverStateSuccess(state: A)
+
   private case class RecoverStateFailure(cause: Throwable)
 
   // ---------------------------------------------------------------------------
@@ -339,24 +344,28 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
     new FilesystemSnapshotStore(new FilesystemSnapshotStoreSettings(context.system), id)
 
   implicit class SafeConfig(config: Config) {
+
     import scala.collection.JavaConverters._
 
-    def getSafeStringList(path: String): Option[Set[String]] = Try { config.getStringList(path).asScala.toSet }.toOption
-    def getSafeBoolean(path: String, default: Boolean) = Try { config.getBoolean(path) } recover { case _ => default } get
+    def getSafeStringList(path: String): Option[Set[String]] = Try {
+      config.getStringList(path).asScala.toSet
+    }.toOption
+
+    def getSafeBoolean(path: String, default: Boolean) = Try {
+      config.getBoolean(path)
+    } recover { case _ => default } get
   }
 
-  // Muchas options
-  private val stabilityEnabled = context.system.settings.config.getSafeBoolean("eventuate.log.stability", false)
-  private val stabilityChecker: Option[ActorRef] = {
-    if (stabilityEnabled)
-      context.system.settings.config.getSafeStringList("eventuate.log.stability.partitions").map(partitions => context.actorOf(StabilityChecker.props(partitions), s"$id-stability"))
-    else None
+  protected def stabilityCheckerProps(partitions: Set[String]): Props = StabilityChecker.props(partitions)
+
+  private val stabilityEnabled = context.system.settings.config.getSafeBoolean("eventuate.log.stability", true) // TODO default false
+  private val (stabilityChecker, stabilityChannel) = {
+    if (stabilityEnabled) {
+      val checker = context.system.settings.config.getSafeStringList("eventuate.log.stability.partitions").map(partitions => context.actorOf(stabilityCheckerProps(partitions), s"$id-stability"))
+      val channel = Some(context.actorOf(Props[StabilityChannel]))
+      (checker, channel)
+    } else (None, None)
   }
-  private val stabilityChannel: Option[ActorRef] = {
-    if (stabilityEnabled) Some(context.actorOf(Props[StabilityChannel]))
-    else None
-  }
-  private var stabilitySchedule: Option[Cancellable] = None
 
   /**
    * This event log's logging adapter.
@@ -372,6 +381,7 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       recoverStateSuccess(state)
       unstashAll()
       context.become(initialized orElse tcstableProtocol)
+    //context.become(initialized) TODO
     case RecoverStateFailure(e) =>
       logger.error(e, "Cannot recover event log state")
       recoverStateFailure(e)
@@ -430,7 +440,8 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       val sdr = sender()
       channel.foreach(_ ! r)
       remoteReplicationProgress += targetLogId -> (0L max from - 1)
-      stabilityChecker foreach (_ ! MostRecentlyViewedTimestamps(targetLogId, currentTargetVersionVector)) // TODO estan bien estos parametros?
+      //stabilityChecker foreach (_ ! MostRecentlyViewedTimestamps(targetLogId, currentTargetVersionVector))
+      sendRTMUpdates(MostRecentlyViewedTimestamps(targetLogId, currentTargetVersionVector))
       replicationRead(from, clock.sequenceNr, max, scanLimit, evt => evt.replicable(currentTargetVersionVector, filter)) onComplete {
         case Success(r) => self.tell(ReplicationReadSuccess(r.events, from, r.to, targetLogId, null), sdr)
         case Failure(e) => self.tell(ReplicationReadFailure(ReplicationReadSourceException(e.getMessage), targetLogId), sdr)
@@ -528,12 +539,21 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       registry = registry.unregisterSubscriber(subscriber)
   }
 
+  def sendRTMUpdates(updates: MostRecentlyViewedTimestamps): Unit = {
+    for {
+      checker <- stabilityChecker
+      channel <- stabilityChannel
+    } yield {
+      checker ! updates
+      checker.tell(StableVT, channel)
+    }
+  }
+
   def tcstableProtocol: Receive = stabilityChannel match {
     case None => Actor.emptyBehavior
     case Some(sc) => {
-      case subscription: SubscribeTCStable      => sc forward subscription
-      case unsubscription: UnsubscribeTCStable  => sc forward unsubscription
-      case ScheduleStabilityNotification(delay) => stabilitySchedule = Some(context.system.scheduler.schedule(delay, delay, sc, TriggerStabilityCheck)(context.dispatcher, sc))
+      case subscription: SubscribeTCStable     => sc forward subscription
+      case unsubscription: UnsubscribeTCStable => sc forward unsubscription
     }
   }
 
@@ -563,7 +583,16 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
 
   private def processReplicationWrites(writes: Seq[ReplicationWrite]): Unit = {
     for { w <- writes; (id, m) <- w.metadata } replicaVersionVectors = replicaVersionVectors.updated(id, m.currentVersionVector)
-    // TODO aca puedo actualizar mi RTM como ya se esta haciendo
+    //stabilityChecker foreach { _ ! MostRecentlyViewedTimestamps(replicaVersionVectors) }
+    sendRTMUpdates(MostRecentlyViewedTimestamps(replicaVersionVectors))
+    /* TODO
+    stabilityChecker foreach { sc =>
+      val metadata: Map[String, VectorTime] = writes.flatMap(_.metadata.toList).groupBy(_._1).mapValues(_.map(_._2.currentVersionVector).reduce[VectorTime](vtMax(_, _))) // TODO improve redability
+      val updates = metadata.map { case (id, vt) => MostRecentlyViewedTimestamps(id, vt) }
+      //val updates = writes map (w => MostRecentlyViewedTimestamp(w.metadata.head._1, w.metadata.head._2.currentVersionVector))
+      updates foreach (sc ! _)
+    }
+    */
     writeBatches(writes, prepareReplicatedEvents(_, _, currentSystemTime)) match {
       case Success((updatedWrites, updatedEvents, clock2)) =>
         clock = clock2
@@ -584,19 +613,11 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
               w.replyTo ! ReplicationWriteFailure(e)
           }
         }
-        stabilityChecker foreach (_ ! MostRecentlyViewedTimestamps(id, clock.versionVector))
-        stabilityChecker foreach { sc =>
-          // Porque un write tiene un mapa de metadata?
-          // TODO ¿¿writes or updatedWrites??
-          val metada: Map[String, VectorTime] = writes.flatMap(_.metadata.toList).groupBy(_._1).mapValues(_.map(_._2.currentVersionVector).reduce[VectorTime](vtMax(_, _))) // TODO improve redability
-          val updates = metada.map { case (id, vt) => MostRecentlyViewedTimestamps(id, vt) }
-          //val updates = writes map (w => MostRecentlyViewedTimestamp(w.metadata.head._1, w.metadata.head._2.currentVersionVector))
-          logger.info(s"Sending to stability the RTM Updates $updates after a ReplicationReadSuccess received")
-          updates foreach (sc ! _)
-        }
-        stabilityChecker foreach (_ ! TriggerStabilityCheck)
+        logger.debug("Sending after write")
+        sendRTMUpdates(MostRecentlyViewedTimestamps(id, clock.versionVector))
         channel.foreach(_ ! Updated(updatedEvents))
       case Failure(e) =>
+        logger.debug("Write Failure")
         writes.foreach { write =>
           write.replyTo ! ReplicationWriteFailure(e)
         }
@@ -679,6 +700,7 @@ object EventLog {
   /**
    * Periodically sent to an [[EventLog]] after reception of a [[Delete]]-command to
    * instruct the log to physically delete logically deleted events that are alreday replicated.
+   *
    * @see DeletionMetadata
    */
   private case object PhysicalDelete

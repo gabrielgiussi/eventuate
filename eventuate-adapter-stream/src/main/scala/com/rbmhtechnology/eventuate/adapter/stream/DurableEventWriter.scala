@@ -104,6 +104,7 @@ private object BatchWriteStage {
       case f: WriteFailure => Future.failed(f.cause)
     }
 
+  // TODO see this
   def replicationBatchWriter(id: String, eventLog: ActorRef)(implicit executionContext: ExecutionContext, timeout: Timeout): BatchWriter = (events: Seq[DurableEvent]) =>
     eventLog.ask(ReplicationWrite(events.map(_.copy(emitterId = id, processId = UndefinedLogId)), replicationProgresses(events).mapValues(ReplicationMetadata(_, VectorTime.Zero)))).flatMap {
       case s: ReplicationWriteSuccess => Future.successful(s.events)

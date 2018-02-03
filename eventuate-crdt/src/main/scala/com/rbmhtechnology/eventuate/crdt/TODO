@@ -2,27 +2,6 @@
 
 8. RWSet, EWFlag
 
-16. FIX the need of import the object that contains the ops def for instantiate the service (before this wasn't needed)
-
-18. Fix the need of specify the ops in ReplicatedAWSetSpec
-    new AWSetService[Int]("A", endpoint.log)(system, AWSet.AWSetServiceOps)
-    (related to 16 and 17)
-
-20.   override def updateState(op: Operation, state: Seq[Operation]): Seq[Operation] = {
-        // FIXME this is wrong, i need to know if the op was added to use r0 or r1
-        // option 1. polog.add returns POlog,Boolean
-        // option 2. the state is part of the Polog and add updates both (problem, i should pass a
-        // function to update state to the polog.add for AWSet for example, because the POLog will only
-        // know how to update the Seq[Operation] state.
-        // FIXME it would be better to diretly save Versioned[Operation] in the state?
-        val one = VectorTime.Zero.increment("a") // FIXME ugly but I preferred this over
-        // pasing the versioned operations, because it reflects better that the timestamp
-        // is useless because op is always on the causal future
-        val redundant = causalRedundancy.r0(Versioned(op, one))
-        state.map(Versioned(_, VectorTime.Zero)) filter redundant
-      }
-      */
-
 COMMENT IN THE PR
 15. We should be able to define specific state serialization for custom crdt like AWSet
    (supposing this represent an improvement in performance)
@@ -34,3 +13,47 @@ COMMENT IN THE PR
 21. The use of VectorTime.Zero.increment("a")
 
 22. SimpleCRDT, Seq[Operation] or Seq[Versioned[Operation]]
+
+23. Receive implicit ops in Services
+
+----------------------------------------------------------------------------------------------
+
+24. Improve it:StabilitySpec ? is really needed?
+    like
+    r1.write(4)
+    r1.sendsReplicationRead
+    local.writes(3)
+    local.writesRemoteEvents() // la posta seria poder reusar el ReplicationReadSuccess -> ReplicationWrite
+    pero esta en Replicator.
+    Por ahi es mejor q este test controle q se reenvien unicamente (mas simple)
+
+25. multi-jvm
+    opcion1) tune Replicator (para que envie reads cuando yo quiero). Para esto necesito modificar el metodo
+    createReplicator to protected
+
+    opcion2) al final te tod.o tirar un TCSTable y q me responda y ver solo ese resultado.
+
+26. Tengo que hacer otro test de integracion q tenga un crdt
+
+27. Cosas que dificultan los tests
+    (1) no puedo controlar en que momento el replicator manda Reads y Writes (porque se schedulea internamente)
+
+28. Stabilization: Stream vs Actor?
+    http://blog.colinbreck.com/integrating-akka-streams-and-akka-actors-part-i/
+    http://blog.colinbreck.com/patterns-for-streaming-measurement-data-with-akka-streams/
+
+
+
+
+30. Cosas que necesito testear
+   - Que el EventLog este mandando al checker los MostRecent... on rreads y rwrites
+     Override un metodo updateRTM
+
+
+   - Que la RTM se actualiza bien y retorna el vector stable correctamente (*)
+     Aca hay un punto a discutir, podemos considerar la visibilidad de las particiones como parte
+     de la estabilidad, es decir q la funcion no me devuelva un vector stable si no sabe que vio todas
+     las particiones.
+   - Que no se emitan TCStable hasta que no haya visto todas las particiones // TODO
+   - Que los que se suscriben reciban el TCStable
+   - ¿Que el CRDT reciba el TCStable? podria ser...
