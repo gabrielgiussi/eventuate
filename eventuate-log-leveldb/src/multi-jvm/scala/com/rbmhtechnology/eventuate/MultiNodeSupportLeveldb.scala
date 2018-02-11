@@ -43,6 +43,7 @@ trait MultiNodeSupportLeveldb extends BeforeAndAfterAll { this: MultiNodeSpec wi
 
     // delete log and snapshot files
     if (isNode(coordinator)) {
+      println("IS COORDINATOR")
       FileUtils.deleteDirectory(snapshotRootDir)
       FileUtils.deleteDirectory(logRootDir)
     }

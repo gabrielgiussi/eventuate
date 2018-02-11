@@ -41,9 +41,9 @@ class StabilityChecker(partitions: Set[String]) extends Actor with ActorLogging 
 
   override def receive = {
     case MostRecentlyViewedTimestamps(timestamps) =>
-      log.debug(s"Received $timestamps, current RTM: $recentTimestampsMatrix")
+      log.error(s"Received $timestamps, current RTM: $recentTimestampsMatrix")
       recentTimestampsMatrix = StabilityProtocol.updateRTM(recentTimestampsMatrix)(timestamps)
-      log.debug(s"Updated RTM: $recentTimestampsMatrix")
+      log.error(s"Updated RTM: $recentTimestampsMatrix")
 
     case StableVT =>
       sender() ! StabilityProtocol.stableVectorTime(recentTimestampsMatrix.values.toSeq)

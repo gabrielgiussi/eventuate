@@ -59,10 +59,9 @@ class StabilityCheckerTest extends TestKit(ActorSystem("stabilityTest")) with Wo
     "5" in new AandBandC {
       val st = stabilityChecker()
       st ! MostRecentlyViewedTimestamps(A, vt(2, 1, 0))
-      st ! MostRecentlyViewedTimestamps(B, vt(1, 0, 0))
       st ! MostRecentlyViewedTimestamps(C, vt(1, 1, 1))
       st ! StableVT
-      expectMsg(tcstable(1, 1, 0))
+      expectMsg(tcstable(0, 1, 0))
     }
   }
 

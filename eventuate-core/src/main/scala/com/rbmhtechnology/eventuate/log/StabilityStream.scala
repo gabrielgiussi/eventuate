@@ -41,10 +41,13 @@ object StabilityProtocol {
   }
   case object StableVT
   case object TriggerStability
+  case class LocalCTVV(timestamp: VectorTime) // TODO
   case class MostRecentlyViewedTimestamps(timestamps: Map[String, VectorTime])
   type RTM = Map[String, VectorTime]
   case class TCStable(private val stableVector: VectorTime) {
     def isStable(that: VectorTime): Boolean = that <= stableVector
+    def isZero(): Boolean = stableVector.value.forall(_._2 equals 0)
+    def equiv(that: TCStable): Boolean = stableVector.equiv(that.stableVector)
   }
 
   val updateRTM: RTM => Map[String, VectorTime] => RTM = rtm => timestamps => {
@@ -57,7 +60,8 @@ object StabilityProtocol {
           case _                => acc
         }
     }
-    val merged = timestamps.tail.values.fold(timestamps.head._2)(_ merge _)
+    //val merged = timestamps.tail.values.fold(timestamps.head._2)(_ merge _)
+    val merged = timestamps.values.fold(VectorTime.Zero)(_ merge _)
     val updated2 = merged.value.foldLeft(updated) {
       case (acc, (processId, m)) =>
         val currentVT = acc.getOrElse(processId, VectorTime.Zero)

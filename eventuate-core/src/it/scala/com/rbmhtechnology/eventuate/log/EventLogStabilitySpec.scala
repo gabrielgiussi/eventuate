@@ -119,6 +119,13 @@ object EventLogStabilitySpec {
     log.tell(ReplicationWrite(writes2, Map(remoteId -> ReplicationMetadata(0, metadata)), false, Actor.noSender), Actor.noSender)
   }
 
+  def write2(log: ActorRef, remoteId: String, remoteId2: String, events: Seq[VectorTime], fail: Boolean = false) = {
+    val writes = events.map(vt => DurableEvent(payload = "", vectorTimestamp = vt, processId = remoteId2))
+    val metadata = events.fold(VectorTime.Zero)(_ merge _)
+    val writes2 = if (fail) writes :+ DurableEvent(payload = payloadError) else writes
+    log.tell(ReplicationWrite(writes2, Map(remoteId -> ReplicationMetadata(0, metadata)), false, Actor.noSender), Actor.noSender)
+  }
+
   case class RemoteEventLog(id: String) {
     private var cTVV = VectorTime.Zero
 
@@ -190,11 +197,15 @@ class EventLogStabilitySpec extends TestKit(ActorSystem("test", EventLogStabilit
       expectMsg(R1.expectedUpdate(vt(local = 0, r1 = 1)))
       expectMsg(MostRecentlyViewedTimestamps(Map(localId -> VectorTime(localId -> 0, remoteId1 -> 1, remoteId2 -> 0))))
     }
-    "4" in {
+    "not send RTM update for its own entry if the write fails" in {
       write(log, remoteId1, Seq(vt(local = 0, r1 = 1)), fail = true)
       expectMsg(MostRecentlyViewedTimestamps(Map(remoteId1 -> vt(local = 0, r1 = 1))))
       expectNoMsg()
-
+    }
+    "send RTM updates for endpoints that are not the one that is sending the ReplicationWrite" in {
+      write2(log, remoteId1, remoteId2, Seq(vt(local = 0, r1 = 1)))
+      expectMsg(MostRecentlyViewedTimestamps(Map(remoteId2 -> vt(local = 0, r1 = 1))))
+      expectMsg(MostRecentlyViewedTimestamps(Map(localId -> VectorTime(localId -> 0, remoteId1 -> 1, remoteId2 -> 0))))
     }
   }
 

@@ -656,6 +656,11 @@ private class Replicator(target: ReplicationTarget, source: ReplicationSource) e
       log.warning(s"replication read failed: {}", cause)
       context.become(idle)
       scheduleRead()
+    case MegaReplica(ReplicationReadSuccess(events, fromSequenceNr, replicationProgress, _, currentSourceVersionVector), vectors) =>
+      detector ! AvailabilityDetected
+      context.become(writing)
+      target.log ! vectors
+      write(events, replicationProgress, currentSourceVersionVector, replicationProgress >= fromSequenceNr)
   }
 
   val writing: Receive = {

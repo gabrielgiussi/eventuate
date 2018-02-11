@@ -27,7 +27,7 @@ import com.rbmhtechnology.eventuate.log.StabilityChannel.SubscribeTCStable
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 import com.typesafe.config.Config
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ ExecutionContext, Future }
 import scala.concurrent.duration._
 import scala.language.higherKinds
 import scala.util._
@@ -253,7 +253,7 @@ trait CRDTService[A, B] {
         }
       case s: TCStable =>
         crdt = ops.stable(crdt, s)
-        onStable(crdt,s)
+        onStable(crdt, s)
     }
 
     override def onEvent = {

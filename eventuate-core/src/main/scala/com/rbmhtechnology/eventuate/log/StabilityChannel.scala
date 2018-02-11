@@ -43,9 +43,11 @@ class StabilityChannel extends Actor with ActorLogging {
       context.become(subscriptionProtocol(subscribers + actor))
     case Terminated(actor)          => unsubscribe(subscribers, actor)
     case UnsubscribeTCStable(actor) => unsubscribe(subscribers, actor)
-    case tcs: TCStable if !(lastTCStable equals Some(tcs)) =>
+    case tcs: TCStable if !(lastTCStable.fold(false)(t => t.equiv(tcs) || t.isZero())) =>
+      log.info("Received => {}", tcs)
       lastTCStable = Some(tcs)
       subscribers.foreach(_ ! tcs)
+    case _ => () // TODO remove (user to not log)
   }
 
   override def receive = subscriptionProtocol(Set.empty)

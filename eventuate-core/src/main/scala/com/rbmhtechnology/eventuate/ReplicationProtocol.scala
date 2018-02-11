@@ -264,6 +264,10 @@ object ReplicationProtocol {
    */
   case class ReplicationReadTimeoutException(timeout: FiniteDuration) extends ReplicationReadException(s"Replication read timed out after $timeout")
 
+  case class MegaReplica(read: ReplicationReadSuccess, vectors: ReplicaVersionVectors)
+
+  case class ReplicaVersionVectors(timestamps: Map[String, VectorTime])
+
   /**
    * Instruct a log to adjust the sequence nr of the internal [[EventLogClock]] to the version vector.
    * This is ensures that the sequence nr is greater than or equal to the log's entry in the version vector.

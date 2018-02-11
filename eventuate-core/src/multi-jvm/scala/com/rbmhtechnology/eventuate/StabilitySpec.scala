@@ -17,105 +17,130 @@
 package com.rbmhtechnology.eventuate
 
 import akka.actor.Actor
+import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.Props
-import akka.remote.testkit.MultiNodeSpec
 import akka.testkit.TestProbe
 import com.rbmhtechnology.eventuate.EventsourcedView.Handler
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.StableVT
+import com.rbmhtechnology.eventuate.log.StabilityChannel.SubscribeTCStable
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 
+import scala.annotation.tailrec
 import scala.util.Try
 
-class StabilitySpecConfig(providerConfig: Config) extends MultiNodeReplicationConfig {
+class StabilitySpecConfig(providerConfig: Config) extends EventuateMultiNodeSpecConfig with MultiNodeReplicationConfig {
 
-  val nodeA = role("nodeA")
-  val nodeB = role("nodeB")
-  //val nodeC = role("nodeC")
+  val logName = "stabilityLog"
 
-  val nodeAEventLog = s"${nodeA.name}_StabilitySpecLeveldb"
-  val nodeBEventLog = s"${nodeB.name}_StabilitySpecLeveldb"
+  val nodeA = endpointTest("nodeA", Set("nodeB", "nodeC"))
+  val nodeB = endpointTest("nodeB", Set("nodeA"))
+  val nodeC = endpointTest("nodeC", Set("nodeA"))
 
   testTransport(on = true) // TODO review
 
   val customConfig = ConfigFactory.parseString(
     s"""
-       |eventuate.log.stability.partitions = [$nodeAEventLog,$nodeBEventLog]
-    """.stripMargin) // TODO
+       |akka.loglevel = OFF
+       |eventuate.log.write-batch-size = 1
+       |eventuate.log.stability.partitions = [${Set(nodeA, nodeB, nodeC).map(_.partitionName).mkString(",")}]
+    """.stripMargin)
 
   setConfig(customConfig.withFallback(providerConfig))
 }
 
 object StabilitySpec {
 
-  val nodeALog = "nodeA_StabilitySpecLeveldb"
-  val nodeBLog = "nodeB_StabilitySpecLeveldb"
-
   case class Save(payload: String)
+
   case class SavedValue(payload: String)
 
-  implicit class EnhancedProbe(probe: TestProbe) {
-    def expectAnytime[T](obj: T, limit: Int = 5): T = {
-      Try { probe.expectMsg(obj) }.recover {
-        case a: AssertionError if (limit > 1) =>
-          println("Assertion error" + a.getMessage)
-          expectAnytime(obj, limit - 1)
-      }.get
-    }
-  }
-
-  class DummyActor(val id: String, val eventLog: ActorRef, probe: ActorRef) extends EventsourcedActor {
+  class DummyActor(val id: String, val eventLog: ActorRef) extends EventsourcedActor {
 
     override def onCommand: Receive = {
       case Save(p) => persist(SavedValue(p))(Handler.empty)
     }
 
-    override def onEvent: Receive = {
-      case SavedValue("end") => probe ! s"continue"
+    override def onEvent: Receive = Actor.emptyBehavior
+  }
+
+  class TCStableActor(tcs: TCStable, probe: ActorRef) extends Actor with ActorLogging {
+
+    override def receive: Receive = {
+      case t: TCStable if t equiv tcs => probe ! "stable"
+      case t: TCStable                => log.error("Stable => {}", t)
     }
   }
+
 }
 
-abstract class StabilitySpec(config: StabilitySpecConfig) extends MultiNodeSpec(config) with MultiNodeWordSpec with MultiNodeReplicationEndpoint {
+abstract class StabilitySpec(config: StabilitySpecConfig) extends EventuateMultiNodeSpec(config) {
+
+  import Implicits._
   import StabilitySpec._
   import config._
+
+  import scala.concurrent.duration._
 
   def initialParticipants: Int =
     roles.size
 
-  "eventlog" must {
-    "" in {
-      runOn(nodeA) {
-        val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
-        val probe = TestProbe()
-        val actor = system.actorOf(Props(new DummyActor("dummyA", endpoint.log, probe.ref)))
-
-        endpoint.log.tell(StableVT, probe.ref)
-        probe.expectMsg(TCStable(VectorTime(nodeALog -> 0, nodeBLog -> 0)))
-
-        actor ! Save("a")
-        actor ! Save("end")
-        probe.expectMsg("continue")
-        probe.expectMsg("continue")
-        Thread.sleep(1000)
-        endpoint.log.tell(StableVT, probe.ref)
-        probe.expectMsg(TCStable(VectorTime(nodeALog -> 2, nodeBLog -> 2)))
-
+  implicit class EnhancedTestProbe(probe: TestProbe) {
+    def expectMsgWithin[T](max: FiniteDuration, obj: T): Unit = {
+      @tailrec
+      def _expect(): Unit = try {
+        expectMsg(obj)
+      } catch {
+        case e: AssertionError =>
+          if (!e.getMessage.contains("timeout")) _expect()
+          else throw e
       }
 
-      runOn(nodeB) {
-        val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
-        val probe = TestProbe()
-        val actor = system.actorOf(Props(new DummyActor("dummyB", endpoint.log, probe.ref)))
+      within(max) {
+        _expect()
+      }
+    }
+  }
 
-        actor ! Save("b")
-        actor ! Save("end")
-        probe.expectMsg("continue")
-        probe.expectMsg("continue")
-        Thread.sleep(1000)
-        probe.expectMsg(TCStable(VectorTime(nodeALog -> 2, nodeBLog -> 2)))
+  val expected = TCStable(VectorTime("nodeA_stabilityLog" -> 4, "nodeB_stabilityLog" -> 3, "nodeC_stabilityLog" -> 2))
+
+  val initialize = (e: ReplicationEndpoint) => {
+    val stableProbe = TestProbe()
+    val subscribe = system.actorOf(Props(new TCStableActor(expected, stableProbe.ref)), "stableActor")
+    val actor = system.actorOf(Props(new DummyActor("dummy", e.log)), "dummy")
+
+    e.log ! SubscribeTCStable(subscribe)
+
+    (stableProbe, actor)
+  }
+
+  "eventlog" must {
+    "" in {
+
+      nodeA.runWith(initialize) {
+        case (_, (stableProbe, actor)) =>
+          actor ! Save("a1")
+          actor ! Save("a2")
+          actor ! Save("a3")
+          actor ! Save("a4")
+          stableProbe.expectMsg("stable")
+      }
+
+      nodeB.runWith(initialize) {
+        case (_, (stableProbe, actor)) =>
+          actor ! Save("b1")
+          actor ! Save("b2")
+          actor ! Save("b3")
+          stableProbe.expectMsg("stable")
+          testConductor.passThrough()
+      }
+
+      nodeC.runWith(initialize) {
+        case (_, (stableProbe, actor)) =>
+          actor ! Save("c1")
+          actor ! Save("c2")
+          stableProbe.expectMsg("stable")
       }
     }
   }
