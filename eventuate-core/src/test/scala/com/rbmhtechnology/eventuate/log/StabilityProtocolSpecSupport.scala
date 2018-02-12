@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
-package com.rbmhtechnology.eventuate
+package com.rbmhtechnology.eventuate.log
 
 import akka.actor.ActorSystem
+import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 
-package object log {
+object StabilityProtocolSpecSupport {
 
-  trait AandB {
+  trait ClusterAB {
     def A = "A"
     def B = "B"
     def partitions = Set(A, B)
@@ -31,7 +32,7 @@ package object log {
     def stabilityChecker()(implicit system: ActorSystem) = system.actorOf(StabilityChecker.props(partitions))
   }
 
-  trait AandBandC extends AandB {
+  trait ClusterABC extends ClusterAB {
     def C = "C"
     override def partitions: Set[String] = super.partitions + C
     def vt(a: Long, b: Long, c: Long) = VectorTime(A -> a, B -> b, C -> c)

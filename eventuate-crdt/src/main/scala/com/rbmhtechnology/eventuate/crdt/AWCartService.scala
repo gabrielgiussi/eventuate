@@ -23,7 +23,7 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
 import scala.concurrent.Future
 
 /**
- * [[AWCart]] entry.
+ * AWCart entry.
  *
  * @param key      Entry key. Used to identify a product in the shopping cart.
  * @param quantity Entry quantity.
@@ -32,6 +32,7 @@ import scala.concurrent.Future
 case class AWCartEntry[A](key: A, quantity: Int) extends CRDTFormat
 
 object AWCartService {
+
   def zero(): SimpleCRDT = AWCartServiceOps.zero
 
   implicit def AWCartServiceOps[A] = new CvRDTPureOpSimple[Map[A, Int]] {
@@ -46,14 +47,14 @@ object AWCartService {
 
     val r: Redundancy = (v, _) => v.value match {
       case _: RemoveOp => true
-      case Clear       => true
+      case ClearOp     => true
       case _           => false
     }
 
     val r0: Redundancy_ = newOp => op => {
       ((op.vectorTimestamp, op.value), (newOp.vectorTimestamp, newOp.value)) match {
         case ((t1, AddOp(AWCartEntry(k1, _))), (t2, RemoveOp(k2))) => (t1 < t2) && (k1 equals k2)
-        case ((t1, AddOp(_)), (t2, Clear)) => (t1 < t2)
+        case ((t1, AddOp(_)), (t2, ClearOp)) => (t1 < t2)
         case _ => false
       }
     }
@@ -62,7 +63,7 @@ object AWCartService {
 
     override val optimizedUpdateState: PartialFunction[(Operation, Seq[Operation]), Seq[Operation]] = {
       case (RemoveOp(key), state) => state.filterNot(_.asInstanceOf[AWCartEntry[_]].key equals key)
-      case (Clear, _)             => Seq.empty
+      case (ClearOp, _)           => Seq.empty
       case (_, state)             => state
     }
 
@@ -70,7 +71,7 @@ object AWCartService {
 }
 
 /**
- * Replicated [[AWCart]] CRDT service.
+ * Replicated AWCart CRDT service.
  *
  *  - For adding a new `key` of given `quantity` a client should call `add`.
  *  - For incrementing the `quantity` of an existing `key` a client should call `add`.
@@ -80,7 +81,7 @@ object AWCartService {
  *
  * @param serviceId Unique id of this service.
  * @param log       Event log.
- * @tparam A [[AWCart]] key type.
+ * @tparam A AWCart key type.
  */
 class AWCartService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Map[A, Int]] {
@@ -100,7 +101,7 @@ class AWCartService[A](val serviceId: String, val log: ActorRef)(implicit val sy
     op(id, RemoveOp(key))
 
   def clear(id: String): Future[Map[A, Int]] =
-    op(id, Clear)
+    op(id, ClearOp)
 
   start()
 }

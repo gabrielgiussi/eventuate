@@ -440,7 +440,7 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       val sdr = sender()
       channel.foreach(_ ! r)
       remoteReplicationProgress += targetLogId -> (0L max from - 1)
-      //sendRTMUpdates(MostRecentlyViewedTimestamps(targetLogId, currentTargetVersionVector)) // TODO this is ok?
+      //sendRTMUpdates(MostRecentlyViewedTimestamps(targetLogId, currentTargetVersionVector)) // TODO better send?
       replicationRead(from, clock.sequenceNr, max, scanLimit, evt => evt.replicable(currentTargetVersionVector, filter)) onComplete {
         case Success(r) => self.tell(ReplicationReadSuccess(r.events, from, r.to, targetLogId, null), sdr)
         case Failure(e) => self.tell(ReplicationReadFailure(ReplicationReadSourceException(e.getMessage), targetLogId), sdr)
@@ -451,11 +451,10 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       // are still excluded at target based on the current local version vector at the
       // target (for correctness).
       val currentTargetVersionVector = replicaVersionVectors(targetLogId)
-      val others = replicaVersionVectors //- targetLogId // TODO creo q no tendria efecto mandarle el targetLodId, no tiene mucho sentido
       val updated = events.filterNot(_.before(currentTargetVersionVector))
       val reply = r.copy(updated, currentSourceVersionVector = clock.versionVector)
-      //sender() ! reply
-      sender() ! MegaReplica(reply, ReplicaVersionVectors(others + (id -> clock.versionVector))) // TODO just send others?
+      //sdr ! prepareReplicaVersionVectors(targetLogId)
+      sender() ! reply
       channel.foreach(_ ! reply)
       logFilterStatistics("source", events, updated)
     case r @ ReplicationReadFailure(_, _) =>
@@ -539,9 +538,11 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
     case Terminated(subscriber) =>
       registry = registry.unregisterSubscriber(subscriber)
     case r: ReplicaVersionVectors =>
-      println(s"$id => Reciving from replicas => ${r.timestamps}")
       sendRTMUpdates(MostRecentlyViewedTimestamps(r.timestamps))
   }
+
+  def prepareReplicaVersionVectors(targetlogId: String) =
+    ReplicaVersionVectors(replicaVersionVectors + (id -> clock.versionVector)) //- targetLogId // TODO optional
 
   def sendRTMUpdates(updates: MostRecentlyViewedTimestamps): Unit = {
     for {
@@ -582,8 +583,6 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
         writes.foreach(w => w.replyTo.tell(WriteFailure(w.events, e, w.correlationId, w.instanceId), w.initiator))
     }
   }
-
-  private def vtMax(v1: VectorTime, v2: VectorTime): VectorTime = if (v1 > v2) v1 else v2
 
   private def processReplicationWrites(writes: Seq[ReplicationWrite]): Unit = {
     for { w <- writes; (id, m) <- w.metadata } replicaVersionVectors = replicaVersionVectors.updated(id, m.currentVersionVector)

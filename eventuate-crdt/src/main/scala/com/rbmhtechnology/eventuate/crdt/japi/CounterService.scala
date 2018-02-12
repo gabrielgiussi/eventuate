@@ -24,7 +24,7 @@ import akka.actor.ActorRef
 import akka.actor.ActorSystem
 
 /**
- * Java API of a replicated [[Counter]] CRDT service.
+ * Java API of a replicated Counter CRDT service.
  *
  * @param serviceId Unique id of this service.
  * @param log       Event log.

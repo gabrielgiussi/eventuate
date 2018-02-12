@@ -27,7 +27,7 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 import scala.collection.JavaConverters._
 
 /**
- * Replicated [[AWCart]] CRDT service.
+ * Replicated AWCart CRDT service.
  *
  *  - For adding a new `key` of given `quantity` a client should call `add`.
  *  - For incrementing the `quantity` of an existing `key` a client should call `add`.
@@ -37,7 +37,7 @@ import scala.collection.JavaConverters._
  *
  * @param serviceId Unique id of this service.
  * @param log Event log.
- * @tparam A [[AWCart]] key type.
+ * @tparam A AWCart key type.
  */
 class AWCartService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Map[A, Int], JMap[A, JInt]] {

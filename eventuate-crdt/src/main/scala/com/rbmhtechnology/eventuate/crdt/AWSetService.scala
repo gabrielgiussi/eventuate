@@ -33,7 +33,7 @@ object AWSetService {
 
     val r: Redundancy = (v, _) => v.value match {
       case _: RemoveOp => true
-      case Clear       => true
+      case ClearOp     => true
       case _           => false
     }
 
@@ -41,7 +41,7 @@ object AWSetService {
       ((op.vectorTimestamp, op.value), (newOp.vectorTimestamp, newOp.value)) match {
         case ((t1, AddOp(v1)), (t2, AddOp(v2)))    => (t1 < t2) && (v1 equals v2)
         case ((t1, AddOp(v1)), (t2, RemoveOp(v2))) => (t1 < t2) && (v1 equals v2)
-        case ((t1, AddOp(_)), (t2, Clear))         => (t1 < t2)
+        case ((t1, AddOp(_)), (t2, ClearOp))       => (t1 < t2)
       }
     }
 
@@ -57,7 +57,7 @@ object AWSetService {
 
     override def updateState(op: Operation, redundant: Boolean, state: Set[A]): Set[A] = op match {
       case RemoveOp(entry) => state - entry.asInstanceOf[A]
-      case Clear           => Set.empty
+      case ClearOp         => Set.empty
       case _               => state
     }
   }
@@ -89,20 +89,20 @@ class AWSetService[A](val serviceId: String, val log: ActorRef)(implicit val sys
     op(id, RemoveOp(entry))
 
   def clear(id: String): Future[Set[A]] =
-    op(id, Clear)
+    op(id, ClearOp)
 
   start()
 
 }
 
 /**
- * Persistent add operation used for [[AWSet]] and [[AWCart]].
+ * Persistent add operation used for [[AWSet]] and AWCart.
  */
 case class AddOp(entry: Any) extends CRDTFormat
 
 /**
- * Persistent remove operation used for [[AWSet]] and [[AWCart]].
+ * Persistent remove operation used for [[AWSet]] and AWCart.
  */
 case class RemoveOp(entry: Any) extends CRDTFormat
 
-case object Clear extends CRDTFormat
+case object ClearOp extends CRDTFormat

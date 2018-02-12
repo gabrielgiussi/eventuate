@@ -26,37 +26,39 @@ import org.scalatest.BeforeAndAfterEach
 import org.scalatest.Matchers
 import org.scalatest.WordSpecLike
 
-class StabilityCheckerTest extends TestKit(ActorSystem("stabilityTest")) with WordSpecLike with Matchers with BeforeAndAfterAll with BeforeAndAfterEach with ImplicitSender {
+class StabilityCheckerSpec extends TestKit(ActorSystem("StabilityCheckerSpec")) with WordSpecLike with Matchers with BeforeAndAfterAll with BeforeAndAfterEach with ImplicitSender {
+
+  import StabilityProtocolSpecSupport._
 
   "StabilityChecker" should {
-    "" in new AandB {
+    "emit TCStable(0,0) when A = (1,0), B = unknown" in new ClusterAB {
       val st = stabilityChecker()
       st ! MostRecentlyViewedTimestamps(A, vt(1, 0))
       st ! StableVT
       expectMsg(tcstable(0, 0))
     }
-    "2" in new AandB {
+    "emit TCStable(0,0) when A = (1,0), B = (0,0)" in new ClusterAB {
       val st = stabilityChecker()
       st ! MostRecentlyViewedTimestamps(A, vt(1, 0))
       st ! MostRecentlyViewedTimestamps(B, vt(0, 0))
       st ! StableVT
       expectMsg(tcstable(0, 0))
     }
-    "3" in new AandB {
+    "emit TCStable(0,1) when A = (1,1), B = (0,1)" in new ClusterAB {
       val st = stabilityChecker()
       st ! MostRecentlyViewedTimestamps(A, vt(1, 1))
       st ! MostRecentlyViewedTimestamps(B, vt(0, 1))
       st ! StableVT
       expectMsg(tcstable(0, 1))
     }
-    "4" in new AandB {
+    "emit TCStable(1,1) when A = (1,1), B = (1,1)" in new ClusterAB {
       val st = stabilityChecker()
       st ! MostRecentlyViewedTimestamps(A, vt(1, 1))
       st ! MostRecentlyViewedTimestamps(B, vt(1, 1))
       st ! StableVT
       expectMsg(tcstable(1, 1))
     }
-    "5" in new AandBandC {
+    "emit TCStable(0,1,0) when A = (2,1,0), B = unknown, C = (1,1,1)" in new ClusterABC {
       val st = stabilityChecker()
       st ! MostRecentlyViewedTimestamps(A, vt(2, 1, 0))
       st ! MostRecentlyViewedTimestamps(C, vt(1, 1, 1))

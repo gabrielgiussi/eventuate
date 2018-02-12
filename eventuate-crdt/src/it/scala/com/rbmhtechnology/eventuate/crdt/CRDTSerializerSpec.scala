@@ -162,11 +162,11 @@ class CRDTSerializerSpec extends WordSpec with Matchers with BeforeAndAfterAll {
     "support Clear serialization with default payload serialization" in {
       val serialization = SerializationExtension(systems(0))
 
-      serialization.deserialize(serialization.serialize(Clear).get, Clear.getClass).get should be(Clear)
+      serialization.deserialize(serialization.serialize(ClearOp).get, ClearOp.getClass).get should be(ClearOp)
     }
     "support Clear serialization with custom payload serialization" in serializations.tail.foreach { serialization =>
 
-      serialization.deserialize(serialization.serialize(Clear).get, Clear.getClass).get should be(Clear)
+      serialization.deserialize(serialization.serialize(ClearOp).get, ClearOp.getClass).get should be(ClearOp)
     }
   }
 }

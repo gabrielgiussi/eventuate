@@ -34,15 +34,15 @@ object MVRegisterService {
 
     override protected def customEval(ops: Seq[Versioned[Operation]]): Set[A] = ops.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A]).toSet
 
-    val r: Redundancy = (op, _) => op.value.isInstanceOf[Clear.type]
+    val r: Redundancy = (op, _) => op.value.isInstanceOf[ClearOp.type]
 
     val r0: Redundancy_ = op1 => op2 => op2.vectorTimestamp < op1.vectorTimestamp
 
     override implicit val causalRedundancy: CausalRedundancy = new CausalRedundancy(r, r0)
 
     override val optimizedUpdateState: PartialFunction[(Operation, Seq[Operation]), Seq[Operation]] = {
-      case (Clear, _) => Seq.empty
-      case (_, state) => state
+      case (ClearOp, _) => Seq.empty
+      case (_, state)   => state
     }
 
   }
@@ -68,12 +68,12 @@ class MVRegisterService[A](val serviceId: String, val log: ActorRef)(implicit va
     op(id, AssignOp(value))
 
   def clear(id: String): Future[Set[A]] =
-    op(id, Clear)
+    op(id, ClearOp)
 
   start()
 }
 
 /**
- * Persistent assign operation used for [[MVRegisterService]] and [[LWWRegister]].
+ * Persistent assign operation used for MVRegister and LWWRegister.
  */
 case class AssignOp(value: Any) extends CRDTFormat

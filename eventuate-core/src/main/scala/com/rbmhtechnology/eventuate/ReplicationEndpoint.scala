@@ -656,11 +656,6 @@ private class Replicator(target: ReplicationTarget, source: ReplicationSource) e
       log.warning(s"replication read failed: {}", cause)
       context.become(idle)
       scheduleRead()
-    case MegaReplica(ReplicationReadSuccess(events, fromSequenceNr, replicationProgress, _, currentSourceVersionVector), vectors) =>
-      detector ! AvailabilityDetected
-      context.become(writing)
-      target.log ! vectors
-      write(events, replicationProgress, currentSourceVersionVector, replicationProgress >= fromSequenceNr)
   }
 
   val writing: Receive = {
@@ -683,7 +678,10 @@ private class Replicator(target: ReplicationTarget, source: ReplicationSource) e
 
   override def unhandled(message: Any): Unit = message match {
     case ReplicationDue => // currently replicating, ignore
-    case other          => super.unhandled(message)
+    case r: ReplicaVersionVectors =>
+      log.error("WACHOOOOO {}", r.timestamps)
+      target.log ! r
+    case other => super.unhandled(message)
   }
 
   private def notifyLocalAcceptor(writeSuccess: ReplicationWriteSuccess): Unit =

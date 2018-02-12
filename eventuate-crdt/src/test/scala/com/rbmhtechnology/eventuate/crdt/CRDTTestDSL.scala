@@ -42,7 +42,7 @@ object CRDTTestDSL {
 
   trait Clear[C] {
     def crdt: C
-    def clear(t: VectorTime)(implicit ops: CRDTServiceOps[C, _]) = ops.effect(crdt, Clear, t)
+    def clear(t: VectorTime)(implicit ops: CRDTServiceOps[C, _]) = ops.effect(crdt, ClearOp, t)
   }
 
   class SetCRDT[C](crdt: C) {
@@ -53,7 +53,7 @@ object CRDTTestDSL {
 
   class RegisterCRDT[C](crdt: C) {
     def assign[A](value: A, vectorTime: VectorTime, timestamp: Long = 0L, creator: String = "")(implicit ops: CRDTServiceOps[C, _]) = ops.effect(crdt, AssignOp(value), vectorTime, timestamp, creator)
-    def clear(t: VectorTime)(implicit ops: CRDTServiceOps[C, _]) = ops.effect(crdt, Clear, t)
+    def clear(t: VectorTime)(implicit ops: CRDTServiceOps[C, _]) = ops.effect(crdt, ClearOp, t)
   }
 
   trait VectorTimeControl {

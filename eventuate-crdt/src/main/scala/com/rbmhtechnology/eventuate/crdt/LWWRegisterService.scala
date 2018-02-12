@@ -44,7 +44,7 @@ object LWWRegisterService {
     override def customEval(ops: Seq[Versioned[Operation]]): Option[A] =
       ops.sorted(LWWRegisterService.LWWOrdering[A]).lastOption.map(_.value.asInstanceOf[AssignOp].value.asInstanceOf[A])
 
-    val r: Redundancy = (op, _) => op.value equals Clear
+    val r: Redundancy = (op, _) => op.value equals ClearOp
 
     val r0: Redundancy_ = newOp => op => op.vectorTimestamp < newOp.vectorTimestamp
 
@@ -55,11 +55,11 @@ object LWWRegisterService {
 }
 
 /**
- * Replicated [[LWWRegister]] CRDT service.
+ * Replicated LWWRegister CRDT service.
  *
  * @param serviceId Unique id of this service.
  * @param log Event log.
- * @tparam A [[LWWRegister]] value type.
+ * @tparam A LWWRegister value type.
  */
 class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Option[A]] {
@@ -73,7 +73,7 @@ class LWWRegisterService[A](val serviceId: String, val log: ActorRef)(implicit v
     op(id, AssignOp(value))
 
   def clear(id: String): Future[Option[A]] =
-    op(id, Clear)
+    op(id, ClearOp)
 
   start()
 }

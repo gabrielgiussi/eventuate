@@ -20,9 +20,10 @@ import com.rbmhtechnology.eventuate.VectorTime
 import org.scalatest.Matchers
 import org.scalatest.WordSpecLike
 
-class StabilityTest extends WordSpecLike with Matchers {
+class StabilityProtocolSpec extends WordSpecLike with Matchers {
 
   import StabilityProtocol._
+  import StabilityProtocolSpecSupport._
 
   implicit class EnhancedRTM(rtm: RTM) {
     private def _update(timestamps: Map[String, VectorTime]) = updateRTM(rtm)(timestamps)
@@ -32,30 +33,30 @@ class StabilityTest extends WordSpecLike with Matchers {
   }
 
   "Stability" should {
-    "emit TCStable(0,0) when B has not seen (1,0) yet " in new AandB {
+    "emit TCStable(0,0) when A = (1,0), B = unknown" in new ClusterAB {
       initialRTM
         .update(A, vt(1, 0))
         .stable shouldBe tcstable(0, 0)
     }
-    "emit TCStable(0,1) when both have seen a VT = (?,1)" in new AandB {
+    "emit TCStable(0,1) when A = (1,1), B = (0,1)" in new ClusterAB {
       initialRTM
         .update(A, vt(1, 1))
         .update(B, vt(0, 1))
         .stable shouldBe tcstable(0, 1)
     }
-    "emit TCStable(1,1) when both have seen a VT = (1,1)" in new AandB {
+    "emit TCStable(1,1) when A = (1,1), B = (1,1)" in new ClusterAB {
       initialRTM
         .update(A, vt(1, 1))
         .update(B, vt(1, 1))
         .stable shouldBe tcstable(1, 1)
     }
-    "emit TCStable(1,1,0)" in new AandBandC {
+    "emit TCStable(0,1,0) when A = (1,1,1), B = unknown, C = (1,1,1)" in new ClusterABC {
       initialRTM
         .update(A, vt(1, 1, 1))
         .update(C, vt(1, 1, 1))
         .stable shouldBe tcstable(0, 1, 0)
     }
-    "emit TCStable(1,1,1) with multiple updates" in new AandBandC {
+    "emit TCStable(1,1,1) when A = (2,1,1), B = (1,2,1), C = (1,1,2)" in new ClusterABC {
       initialRTM
         .update(
           (A, vt(2, 1, 1)),

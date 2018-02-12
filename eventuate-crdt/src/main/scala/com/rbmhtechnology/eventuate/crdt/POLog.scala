@@ -26,7 +26,7 @@ import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 /**
  * A Partial Ordered Log which retains all invoked operations together with their timestamps.
  *
- * @param log the set of operations with its timestamp and optional metadata
+ * @param log the set of operations with its timestamp and optional metadata (i.e. systemTimestamp, creator)
  */
 case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat {
 
@@ -55,11 +55,15 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
    * by the PO-Log operations [...]. An existing operation x in the PO-Log is removed
    * if it is made redundant by (t, o)"
    *
-   * @param op the operation to add
+   * @see [[CvRDTPureOp.updateState]]
+   * @param op  the operation to add
    * @param red the data type specific relations for causal redundancy
-   * @return the resulting POLog after adding and pruning. Note that the operation may not be present if it was redundant
+   * @return a pair conformed by
+   *         - a boolean indicating if the operation was added to the POLog (i.e. it wasn't redundant). This is used after in [[CvRDTPureOpSimple.updateState]] to know wich [[Redundancy_]] relation must use for update the state.
+   *         - the resulting POLog after adding and pruning.
+   *         Note that the operation received may not be present in the returned POLog if it was redundant
    */
-  def add(op: Versioned[Operation])(implicit red: CausalRedundancy): (POLog, Boolean) = { // TODO document the boolean
+  def add(op: Versioned[Operation])(implicit red: CausalRedundancy): (POLog, Boolean) = {
     val redundant = red.r(op, this)
     val updatedLog = if (redundant) log else log + op
     val r = red.redundancyFilter(redundant)
@@ -67,14 +71,13 @@ case class POLog(log: Set[Versioned[Operation]] = Set.empty) extends CRDTFormat 
   }
 
   /**
-   * Discards all the operations from the POLog that are less or equal than the received [[VectorTime]]
+   * Discards all the operations from the POLog that are less or equal than the received [[TCStable]]
    * and returns a pair with the updated POLog and the discarded (stable) operations.
    *
-   * @see [[VectorTime.stableAt]]
-   * @param stable the stable [[VectorTime]] delivered by the TCSB middleware
-   * @return a pair with the [[POLog]] with only the operations that are not stable
-   *         at the received [[VectorTime]] and the set of operations that are stable
-   *         at the received [[VectorTime]]
+   * @param stable the stable [[TCStable]] delivered by the TCSB middleware
+   * @return a pair conformed by the [[POLog]] with only the operations that are not stable
+   *         at the received [[TCStable]], and the set of operations that are stable
+   *         at the received [[TCStable]]
    */
   def stable(stable: TCStable): (POLog, Seq[Operation]) = {
     val (stableOps, nonStableOps) = log.foldLeft((Seq.empty[Operation], Seq.empty[Versioned[Operation]])) {

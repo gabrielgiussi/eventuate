@@ -44,6 +44,8 @@ abstract class EventuateMultiNodeSpec(config: EventuateMultiNodeSpecConfig) exte
 
   object Implicits {
 
+    implicit def toRole(e: EndpointTest) = e.role
+
     implicit class EndpointTest2(e: EndpointTest) {
       def _th(t: ReplicationEndpoint => Unit): Unit = {
         val endpoint = createEndpoint(e.name, Set(e.logName), e.connections.map(c => node(RoleName(c)).address.toReplicationConnection))

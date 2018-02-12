@@ -20,10 +20,6 @@ import com.rbmhtechnology.eventuate.Versioned
 
 object CRDTTypes {
 
-  //type PruneState[A] = (Operation, A, Obsolete) => A
-
-  //type UpdateState[A] = (A, Versioned[Operation]) => A
-
   type Operation = Any
 
   /**
@@ -53,7 +49,12 @@ object CRDTTypes {
      */
     def this(r: Redundancy, r0: Redundancy_) = this(r, r0, r0)
 
-    // TODO doc
+    /**
+      * Returns the [[Redundancy_]] relation that should be used to prune the POLog and the stable state, depending on wether the newly delivered operation was redundant or not.
+      *
+      * @param redundant a flag that indicates if the newly delivered operation was marked redundant by the [[CausalRedundancy.r]] relation (hence not added to the POLog)
+      * @return the redundancy relation to use
+      */
     def redundancyFilter(redundant: Boolean): Redundancy_ = if (redundant) r0 else r1
   }
 

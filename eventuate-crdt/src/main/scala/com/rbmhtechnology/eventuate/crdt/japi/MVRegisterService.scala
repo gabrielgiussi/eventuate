@@ -26,7 +26,7 @@ import scala.collection.JavaConverters._
 import scala.collection.immutable.Set
 
 /**
- * Java API of a replicated [[MVRegisterService]] CRDT service.
+ * Java API of a replicated MVRegister CRDT service.
  *
  * @param serviceId Unique id of this service.
  * @param log Event log.

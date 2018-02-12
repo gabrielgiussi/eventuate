@@ -56,9 +56,6 @@ class TPSetService[A](val serviceId: String, val log: ActorRef)(implicit val sys
   def add(id: String, entry: A): Future[Set[A]] =
     op(id, AddOp(entry))
 
-  /**
-   * Removes `entry` from the OR-Set identified by `id` and returns the updated entry set.
-   */
   def remove(id: String, entry: A): Future[Set[A]] =
     op(id, RemoveOp(entry))
 

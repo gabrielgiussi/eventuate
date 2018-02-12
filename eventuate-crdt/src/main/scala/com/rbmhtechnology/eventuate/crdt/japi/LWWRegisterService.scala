@@ -26,12 +26,12 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 import scala.compat.java8.OptionConverters._
 
 /**
- * Java API of a replicated [[LWWRegister]] CRDT service.
+ * Java API of a replicated LWWRegister CRDT service.
  *
  * @param serviceId Unique id of this service.
  * @param log       Event log.
  * @param system    Actor system.
- * @tparam A [[LWWRegister]] value type.
+ * @tparam A LWWRegister value type.
  */
 class LWWRegisterService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
   extends CRDTService[SimpleCRDT, Option[A], JOption[A]] {

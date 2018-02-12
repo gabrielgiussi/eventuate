@@ -28,7 +28,7 @@ class CRDTRecoverySpecLeveldb extends TestKit(ActorSystem("test")) with WordSpec
 
   var probe: TestProbe = _
 
-  def service(serviceId: String) = new AWSetService[Int](serviceId, log) { // FIXME not needed before
+  def service(serviceId: String) = new AWSetService[Int](serviceId, log) {
     override def onChange(crdt: AWSet[Int], operation: Option[Operation]): Unit = probe.ref ! ops.value(crdt)
   }
 

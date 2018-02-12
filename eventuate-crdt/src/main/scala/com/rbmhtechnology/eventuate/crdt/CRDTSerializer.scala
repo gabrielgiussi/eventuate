@@ -37,7 +37,7 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
   private val AddOpClass = classOf[AddOp]
   private val RemoveOpClass = classOf[RemoveOp]
   private val AWCartEntryClass = classOf[AWCartEntry[_]]
-  private val ClearClass = Clear.getClass
+  private val ClearClass = ClearOp.getClass
 
   override def identifier: Int = 22567
 
@@ -58,7 +58,7 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
       assignOpFormatBuilder(o).build().toByteArray
     case e: AWCartEntry[_] =>
       awCartEntryFormatBuilder(e).build().toByteArray
-    case Clear =>
+    case ClearOp =>
       ClearFormat.newBuilder().build().toByteArray
     case _ =>
       throw new IllegalArgumentException(s"can't serialize object of type ${o.getClass}")
@@ -81,7 +81,7 @@ class CRDTSerializer(system: ExtendedActorSystem) extends Serializer {
         removeOp(RemoveOpFormat.parseFrom(bytes))
       case AWCartEntryClass =>
         awCartEntry(AWCartEntryFormat.parseFrom(bytes))
-      case ClearClass => Clear
+      case ClearClass => ClearOp
       case _ =>
         throw new IllegalArgumentException(s"can't deserialize object of type ${clazz}")
     }

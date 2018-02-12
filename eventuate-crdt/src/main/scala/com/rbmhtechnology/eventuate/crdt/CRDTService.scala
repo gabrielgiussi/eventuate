@@ -48,7 +48,6 @@ trait CRDTServiceOps[A, B] {
   /**
    * Returns the CRDT value (for example, the entries of an OR-Set)
    */
-  //def value(crdt: A): B = eval(crdt.polog, crdt.state)
   final def value(crdt: A): B = eval(crdt)
 
   def eval(crdt: A): B
@@ -70,23 +69,26 @@ trait CRDTServiceOps[A, B] {
    */
   def effect(crdt: A, op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): A
 
-  // TODO
   /**
-   *
-   *
    * This mechanism allows to discard stable operations, not only timestamps, if they have no
    * impact on the semantics of the data type. For some data types like RWSet
    * some operations become useless once other future operations become stable"
+   *
    * @param crdt a crdt
-   * @param stable
+   * @param stable the TCStable delivered by the TCSB middleware
    * @return the crdt after being applied causal stabilization. By default it returns the same crdt unmodified
    */
   def stable(crdt: A, stable: TCStable) = crdt
 
+  /**
+   * Must return `true` if the CRDT should receive [[TCStable]] for causal stabilization.
+   * By default it returns false because it only makes sense for pure op-based CRDTs.
+   */
   def subscribeToStable: Boolean = false
 }
 
 object CRDTService {
+
   /**
    * Persistent event with update operation.
    *
@@ -110,6 +112,7 @@ private class CRDTServiceSettings(config: Config) {
  * @tparam B CRDT value type
  */
 trait CRDTService[A, B] {
+
   import CRDTService._
 
   private var manager: Option[ActorRef] = None
@@ -195,12 +198,15 @@ trait CRDTService[A, B] {
   }
 
   private case class Get(id: String) extends Identified
+
   private case class GetReply(id: String, value: B) extends Identified
 
   private case class Update(id: String, operation: Operation) extends Identified
+
   private case class UpdateReply(id: String, value: B) extends Identified
 
   private case class Save(id: String) extends Identified
+
   private case class SaveReply(id: String, metadata: SnapshotMetadata) extends Identified
 
   private case class MarkStable(id: String, timestamp: VectorTime) extends Identified

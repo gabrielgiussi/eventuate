@@ -37,27 +37,30 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
    */
   implicit def causalRedundancy: CausalRedundancy
 
-  // TODO
   /**
-   * This data-type specific method should u
-   * The op is always on the causal future of the state
+   * Data-type specific method that updates the stable state with the newly delivered operation, that
+   * is always on the causal future of all the (non-timestamped) operations currently in the state.
+   * This method is needed because operations in the causal future could make stable operations redundant (e.g. in a AWSet a [[ClearOp]] makes all the stable [[AddOp]] redundant and hence must be removed)
+   * The returned state could potentially contain less operations if they were discarded, but it would never contain more operations, in other words the newly delivered operation must not be added to the state.
    *
-   * @param op the newly delivered operation
-   * @param state the current CRDT state
+   * @see [[POLog.add]]
+   * @param op        the newly delivered operation
+   * @param redundant a flag indicating if the newly delivered operation was redundant or it was added to the POLog.
+   * @param state     the current CRDT state
    * @return the updated state
    */
   protected def updateState(op: Operation, redundant: Boolean, state: C): C
 
   /**
    * Adds the operation to the POLog using the causal redundancy relations and also updates the state
-   * with the new operation.
+   * with the newly delivered operation.
    *
    * @param crdt
-   * @param op
+   * @param op              newly delivered operation
    * @param vt              operation's timestamp
    * @param systemTimestamp operation's metadata
    * @param creator         operation's metadata
-   * @return
+   * @return a copy of the CRDT with its POLog and state updated
    */
   final def effect(crdt: CRDT[C], op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): CRDT[C] = {
     val versionedOp = Versioned(op, vt, systemTimestamp, creator)
@@ -65,8 +68,6 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
     val updatedState = updateState(op, redundant, crdt.state)
     crdt.copy(updatedPolog, updatedState)
   }
-
-  override def eval(crdt: CRDT[C]): B
 
   /**
    * "This function takes a stable
@@ -84,7 +85,7 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
    * from the POLog on [[POLog.stable]]
    * The implementation will vary depending on the CRDT's state type.
    *
-   * @param state the current CRDT state
+   * @param state     the current CRDT state
    * @param stableOps the sequence of stable operations that were removed from the POLog
    * @return the updated state
    */
@@ -98,7 +99,7 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
    * The actual implementation doesn't replace the timestamp with ⊥, instead it calls [[stabilizeState]] with
    * the current [[CRDT.state]] and the sequence of stable operations discarded from the [[POLog]].
    *
-   * @param crdt a crdt
+   * @param crdt   a crdt
    * @param stable a stable VectorTime fed by the middleware
    * @return a possible optimized crdt after discarding operations and removing timestamps
    */
@@ -109,7 +110,7 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
   }
 
   /**
-   * A pure-op based doesn't check preconditions because the framework just
+   * A pure-op based doesn't need to check preconditions because the framework just
    * returns the unmodified operation on prepare
    */
   override def precondition: Boolean = false
@@ -146,26 +147,46 @@ trait CvRDTPureOpSimple[B] extends CvRDTPureOp[Seq[Operation], B] {
     customEval(stableOps ++ crdt.polog.log)
   }
 
-  // TODO
   /**
-   * This method
+   * Data-type specific eval over the full Seq of timestamped operations.
+   * Note that the Seq contains both the non-stable operation from the POLog and the stable operations (timestamped with [[VectorTime.Zero]]) from the state.
    *
    * @param ops the full sequence of ops, stable (with the [[VectorTime.Zero]]) and non-stable
    * @return the value of the crdt
    */
   protected def customEval(ops: Seq[Versioned[Operation]]): B
 
-  // TODO
+  /**
+   * Allows to define a custom implementation with improved performance to update the state.
+   * e.g. The AWCart implementation returns an empty state if the newly delivered operation is a [[ClearOp]]
+   *
+   * @return the updated state
+   */
   def optimizedUpdateState: PartialFunction[(Operation, Seq[Operation]), Seq[Operation]] = PartialFunction.empty
 
-  // TODO
+  /**
+   * The default implementation to update the state uses a [[CausalRedundancy]] relation.
+   * Note that this implementation traverse the whole Seq of stable operations to check if they are redundant
+   * @param redundancy the redundancy relation that must be used to prune the state of stable operations
+   * @param stateAndOp a pair conformed by the current state of the CRDT and the newly delivered op
+   * @return the updated state
+   */
   private def defaultUpdateState(redundancy: Redundancy_)(stateAndOp: (Operation, Seq[Operation])) = {
     val (op, state) = stateAndOp
-    val one = VectorTime.Zero.increment("a")
+    val one = VectorTime.Zero.increment("a") // TODO obscure
     val redundant = redundancy(Versioned(op, one))
     state.map(Versioned(_, VectorTime.Zero)) filterNot redundant map (_.value)
   }
 
+  /**
+   * By default it uses [[CausalRedundancy.r0]] (if the op was redundant and hence not added to the POLog) or [[CausalRedundancy.r1]] (it the op was added to the POLog)
+   * to update the state, unless the ops contains an implementation of [[optimizedUpdateState]]
+   *
+   * @param op        the newly delivered operation
+   * @param redundant a flag indicating if the newly delivered operation was redundant or it was added to the POLog.
+   * @param state     the current CRDT state
+   * @return the updated state
+   */
   override final protected def updateState(op: Operation, redundant: Boolean, state: Seq[Operation]): Seq[Operation] =
     optimizedUpdateState.applyOrElse((op, state), defaultUpdateState(causalRedundancy.redundancyFilter(redundant)))
 
