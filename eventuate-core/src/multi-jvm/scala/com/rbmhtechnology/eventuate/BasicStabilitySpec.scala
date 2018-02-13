@@ -32,9 +32,9 @@ class StabilitySpecConfig(providerConfig: Config) extends EventuateMultiNodeSpec
 
   val logName = "stabilityLog"
 
-  val nodeA = endpointTest("nodeA", Set("nodeB", "nodeC"))
-  val nodeB = endpointTest("nodeB", Set("nodeA"))
-  val nodeC = endpointTest("nodeC", Set("nodeA"))
+  val nodeA = endpointNode("nodeA", Set("nodeB", "nodeC"))
+  val nodeB = endpointNode("nodeB", Set("nodeA"))
+  val nodeC = endpointNode("nodeC", Set("nodeA"))
 
   testTransport(on = true)
 

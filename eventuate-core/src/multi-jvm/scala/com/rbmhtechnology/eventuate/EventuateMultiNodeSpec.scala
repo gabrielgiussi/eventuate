@@ -20,7 +20,7 @@ import akka.remote.testconductor.RoleName
 import akka.remote.testkit.MultiNodeConfig
 import akka.remote.testkit.MultiNodeSpec
 
-case class EndpointTest(name: String, connections: Set[String], logName: String, val role: RoleName) {
+case class EventuateNodeTest(name: String, connections: Set[String], logName: String, val role: RoleName) {
 
   private def logPartition(endpoint: String) = s"${endpoint}_${logName}"
 
@@ -34,7 +34,7 @@ abstract class EventuateMultiNodeSpecConfig extends MultiNodeConfig {
 
   def logName: String
 
-  def endpointTest(name: String, connections: Set[String]) = EndpointTest(name, connections, logName, role(name))
+  def endpointNode(name: String, connections: Set[String]) = EventuateNodeTest(name, connections, logName, role(name))
 
 }
 
@@ -44,23 +44,23 @@ abstract class EventuateMultiNodeSpec(config: EventuateMultiNodeSpecConfig) exte
 
   object Implicits {
 
-    implicit def toRole(e: EndpointTest) = e.role
+    implicit def toRole(e: EventuateNodeTest) = e.role
 
-    implicit class EndpointTest2(e: EndpointTest) {
-      def _th(t: ReplicationEndpoint => Unit): Unit = {
+    implicit class EnhancedEventuateNodeTest(e: EventuateNodeTest) {
+      private def _run(thunk: ReplicationEndpoint => Unit): Unit = {
         val endpoint = createEndpoint(e.name, Set(e.logName), e.connections.map(c => node(RoleName(c)).address.toReplicationConnection))
-        t(endpoint)
+        thunk(endpoint)
       }
 
-      def _th2[T](t: ReplicationEndpoint => T, t2: (ReplicationEndpoint, T) => Unit): Unit = {
+      private def _runWith[T](thunk1: ReplicationEndpoint => T, thunk2: (ReplicationEndpoint, T) => Unit): Unit = {
         val endpoint = createEndpoint(e.name, Set(e.logName), e.connections.map(c => node(RoleName(c)).address.toReplicationConnection))
-        val aux = t(endpoint)
-        t2(endpoint, aux)
+        val t = thunk1(endpoint)
+        thunk2(endpoint, t)
       }
 
-      def run(thunk: ReplicationEndpoint => Unit) = runOn(e.role)(_th(thunk))
+      def run(thunk: ReplicationEndpoint => Unit) = runOn(e.role)(_run(thunk))
 
-      def runWith[T](thunk1: ReplicationEndpoint => T)(thunk2: (ReplicationEndpoint, T) => Unit) = runOn(e.role)(_th2(thunk1, thunk2))
+      def runWith[T](thunk1: ReplicationEndpoint => T)(thunk2: (ReplicationEndpoint, T) => Unit) = runOn(e.role)(_runWith(thunk1, thunk2))
 
     }
 

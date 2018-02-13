@@ -46,7 +46,7 @@ abstract class CRDTStabilitySpec(config: StabilitySpecConfig) extends EventuateM
 
   val initialize = (e: ReplicationEndpoint) => {
     val stableProbe = TestProbe()
-    val service = new AWSetService[Int]("awset-test-service", e.log) {
+    val service = new AWSetService[Int](e.id, e.log) {
       override private[crdt] def onStable(crdt: AWSet[Int], stable: StabilityProtocol.TCStable): Unit = {
         if (stable equiv expected)
           stableProbe.ref ! StableCRDT(ops.value(crdt), crdt.polog.log.size)
