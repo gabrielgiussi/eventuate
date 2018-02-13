@@ -1,0 +1,421 @@
+5. document things
+
+8. RWSet, EWFlag
+
+COMMENT IN THE PR
+15. We should be able to define specific state serialization for custom crdt like AWSet
+   (supposing this represent an improvement in performance)
+   For be able to do this, I should create the class AWSet (but I can't extend case class)
+   So i guess i would have to include an optional type in the CRDT case class to apply
+   pattern matching in the CRDTSerializer
+   Unless I apply pattern matching over the state directly!
+
+21. The use of VectorTime.Zero.increment("a")
+
+22. SimpleCRDT, Seq[Operation] or Seq[Versioned[Operation]]
+
+23. Receive implicit ops in Services
+
+----------------------------------------------------------------------------------------------
+
+24. Improve it:StabilitySpec ? is really needed?
+    like
+    r1.write(4)
+    r1.sendsReplicationRead
+    local.writes(3)
+    local.writesRemoteEvents() // la posta seria poder reusar el ReplicationReadSuccess -> ReplicationWrite
+    pero esta en Replicator.
+    Por ahi es mejor q este test controle q se reenvien unicamente (mas simple)
+
+25. multi-jvm
+    opcion1) tune Replicator (para que envie reads cuando yo quiero). Para esto necesito modificar el metodo
+    createReplicator to protected
+
+    opcion2) al final te tod.o tirar un TCSTable y q me responda y ver solo ese resultado.
+
+26. Tengo que hacer otro test de integracion q tenga un crdt
+
+27. Cosas que dificultan los tests
+    (1) no puedo controlar en que momento el replicator manda Reads y Writes (porque se schedulea internamente)
+
+28. Stabilization: Stream vs Actor?
+    http://blog.colinbreck.com/integrating-akka-streams-and-akka-actors-part-i/
+    http://blog.colinbreck.com/patterns-for-streaming-measurement-data-with-akka-streams/
+
+29. Ver DurableEventWriter#replicationBatchWriter
+    Crea ReplicationWrite con mas de 1 ReplicationMetadata
+
+
+30. Cosas que necesito testear
+   - Que el EventLog este mandando al checker los MostRecent... on rreads y rwrites
+     Override un metodo updateRTM
+
+
+   - Que la RTM se actualiza bien y retorna el vector stable correctamente (*)
+     Aca hay un punto a discutir, podemos considerar la visibilidad de las particiones como parte
+     de la estabilidad, es decir q la funcion no me devuelva un vector stable si no sabe que vio todas
+     las particiones.
+   - Que no se emitan TCStable hasta que no haya visto todas las particiones // TODO
+   - Que los que se suscriben reciban el TCStable
+   - ¿Que el CRDT reciba el TCStable? podria ser...
+
+
+
+class StabilityStream {
+
+  /*
+  def rtmFlow(partitions: Set[String]) = GraphDSL.create() { implicit b =>
+    import GraphDSL.Implicits._
+    val updates = b.add(Flow.apply[MostRecentlyViewedTimestamps])
+    val ask = b.add(Flow.apply[StableVT.type])
+    val merge = b.add(Merge[Any](2)) // TODO eager? merge preferred?
+    ask ~> merge
+    updates ~> merge
+    val rtm = b.add(Flow.apply[Any].statefulMapConcat(() => {
+      var m: RTM = partitions.map(_ -> VectorTime.Zero).toMap
+      in => in match {
+        case MostRecentlyViewedTimestamps(timestamps) =>
+          m = StabilityProtocol.updateRTM(m)(timestamps)
+          List()
+        case StableVT => List(StabilityProtocol.stableVectorTime(m.values.toSeq))
+      }
+    }))
+    merge ~> rtm
+
+    new FanInShape2(updates.in, ask.in, rtm.out)
+  }
+
+  private val hub = BroadcastHub.sink[TCStable](bufferSize = 256)
+  private val updates = Source.actorRef[MostRecentlyViewedTimestamps](1, OverflowStrategy.dropHead)
+  private val ask = Source.actorRef[StableVT.type](1, OverflowStrategy.dropNew)
+
+  def deduplicate[A] = Flow.apply[A].statefulMapConcat(() => {
+    var state: Option[A] = None
+    in => in match {
+      case Some(i: A) if !(i equals state) =>
+        state = Some(i)
+        List(i)
+      case _ => List()
+    }
+  })
+
+  def g(actor: ActorRef) = {
+    import akka.pattern.ask
+    import scala.concurrent.duration._
+    implicit val timeout = new Timeout(1 second)
+    val a = Source.actorRef(1, OverflowStrategy.dropHead)
+      .map(m => actor ! m)
+      .mapAsync(1)(_ => actor ? StableVT)
+      .via(deduplicate)
+      .toMat(BroadcastHub.sink(bufferSize = 256))(Keep.right)
+    a
+  }
+
+  def graph(partitions: Set[String], state: ActorRef) = RunnableGraph.fromGraph(GraphDSL.create(updates, ask, rtmFlow(partitions), hub)((u, a, _, h) => (u, a, h)) { implicit b => (updates, ask, rtm, hub) =>
+    import GraphDSL.Implicits._
+    updates ~> rtm.in0
+    ask ~> rtm.in1
+    rtm.out ~> hub
+    ClosedShape
+  })
+
+*/
+}
+
+
+
+// TODO i have 2 options for StabilityChecker
+// (1) Receive the partitions on construction (in this case the actor should be created only after been seing the
+//     entire neighboorhood (it could not receive MostRecentlyUpdated meanwhile but this should be donde quickly when the cluster starts
+// (2) Receive an Enable after seing the neighboorhod
+
+//     A
+//   /  \
+// C     B -- D
+// B should annotate when he sees a VectorClock that strictly contains an event from D
+// Per event log
+class Neighborhood() {
+
+}
+
+
+Test
+StabilityProtocolSpec (core) StabilityProtocol test
+StabilityCheckerSpec (core) send MostRecentlyViewedTimestamps and StableVT
+BasicStabilitySpec (multi-jvm)(logLeveldb)
+
+FIXME
+EventLogStabilitySpec (it)(core) EventLog send Updates on ReplicationReads and ReplicationWrites
+EventLogStabilitySpec2 (it)(core) Subscribers receive TCStable
+
+
+
+####################################################################3
+
+object CRDTStabilitySpecLeveldb {
+
+  // This config should be tied to the trait EventLogTest
+  val config: Config = ConfigFactory.parseString(
+    """
+      |akka.loglevel = "DEBUG"
+      |akka.log-dead-letters = off
+      |eventuate.log.stability.partitions = [L,R1,R2]
+    """.stripMargin).withFallback(EventLogSpecLeveldb.config)
+}
+
+class CRDTStabilitySpec extends TestKit(ActorSystem("crdt-stability-test", CRDTStabilitySpecLeveldb.config)) with EventLogTest with WordSpecLike with Matchers with SingleLocationSpecLeveldb {
+
+  override def log: ActorRef = super[SingleLocationSpecLeveldb].log
+
+  override def logId = localId
+
+  case class StableCRDT[A](at: TCStable, value: A, pologSize: Int)
+
+  "A CRDTService" must {
+    "manage multiple CRDTs identified by name" in {
+      val service = new AWSetService[Int]("a", log) {
+        override private[crdt] def onStable(crdt: AWSet[Int], stable: StabilityProtocol.TCStable): Unit = {
+          testActor ! StableCRDT(stable, ops.value(crdt), crdt.polog.log.size)
+        }
+      }
+      service.add("awset1", 1)
+      service.add("awset1", 2)
+      expectNoMsg()
+      //R1.sendReplicationRead(cTVV = vt(local = 1))
+      //R1.sendReplicaVersionVectors()
+      expectNoMsg()
+      //R2.sendReplicationRead(cTVV = vt(local = 1))
+      //R1.sendReplicaVersionVectors()
+      expectMsg(StableCRDT(TCStable(vt(1, 0, 0)), Set(1, 2), 1))
+
+      R1.sendReplicationRead(cTVV = vt(local = 2))
+      expectNoMsg()
+      R2.sendReplicationRead(cTVV = vt(local = 2))
+      expectMsg(StableCRDT(TCStable(vt(2, 0, 0)), Set(1, 2), 0))
+    }
+  }
+
+}
+
+
+##########################################################
+
+class ForwardActor(to: ActorRef) extends Actor {
+  override def receive: Receive = {
+    case any => to forward any
+  }
+}
+
+object EventLogStabilitySpec {
+  val fromSequenceNrError = -1L
+  val payloadError = "boom"
+
+  val config: Config = ConfigFactory.parseString(
+    """
+      |akka.loglevel = "DEBUG"
+      |akka.log-dead-letters = off
+      |eventuate.log.stability.partitions = [L,R1,R2]
+    """.stripMargin)
+
+  case class LocalEventLog(ref: ActorRef)
+
+  case class LogState(eventLogClock: EventLogClock, deletionMetadata: DeletionMetadata) extends EventLogState
+
+  class DummyEventLog(id: String) extends EventLog[LogState](id) {
+
+    override def read(fromSequenceNr: Long, toSequenceNr: Long, max: Int, aggregateId: String): Future[BatchReadResult] = Future.successful(BatchReadResult(immutable.Seq.empty, 0L))
+
+    override def replicationRead(fromSequenceNr: Long, toSequenceNr: Long, max: Int, scanLimit: Int, filter: DurableEvent => Boolean): Future[BatchReadResult] =
+      if (fromSequenceNr equals fromSequenceNrError) Future.failed(IntegrationTestException) else Future.successful(BatchReadResult(immutable.Seq.empty, 0L))
+
+    override def read(fromSequenceNr: Long, toSequenceNr: Long, max: Int): Future[BatchReadResult] = Future.successful(BatchReadResult(immutable.Seq.empty, 0L))
+
+    override def write(events: immutable.Seq[DurableEvent], partition: Long, clock: EventLogClock): Unit =
+      if (events.exists(_.payload equals payloadError)) throw IntegrationTestException else ()
+
+    override def settings: EventLogSettings = new EventLogSettings {
+      override def partitionSize: Long = 1
+
+      override def initRetryMax: Int = 1
+
+      override def initRetryDelay: FiniteDuration = FiniteDuration.apply(1, TimeUnit.SECONDS)
+
+      override def deletionRetryDelay: FiniteDuration = FiniteDuration.apply(1, TimeUnit.SECONDS)
+    }
+
+    override def recoverState: Future[LogState] = Future.successful(LogState(EventLogClock(), DeletionMetadata(0L, Set.empty)))
+
+    override def readReplicationProgresses: Future[Map[String, Long]] = ???
+
+    override def readReplicationProgress(logId: String): Future[Long] = ???
+
+    override def writeReplicationProgresses(progresses: Map[String, Long]): Future[Unit] = Future.successful(())
+
+    override def writeDeletionMetadata(data: DeletionMetadata): Unit = ???
+
+    override def writeEventLogClockSnapshot(clock: EventLogClock): Future[Unit] = ???
+
+    //override def stabilityCheckerProps(partitions: Set[String]): Props = Props(classOf[ForwardActor], probeActor.ref)
+
+  }
+
+  def read(log: ActorRef, remoteId: String, vt: VectorTime, fail: Boolean = false) = {
+    val fromSeqNr = if (fail) fromSequenceNrError else 0
+    log.tell(ReplicationRead(fromSeqNr, 10, 10, ReplicationFilter.NoFilter, remoteId, Actor.noSender, vt), Actor.noSender)
+  }
+
+  def write(log: ActorRef, remoteId: String, events: Seq[VectorTime], fail: Boolean = false) = {
+    val writes = events.map(vt => DurableEvent(payload = "", vectorTimestamp = vt, processId = remoteId))
+    val metadata = events.fold(VectorTime.Zero)(_ merge _)
+    val writes2 = if (fail) writes :+ DurableEvent(payload = payloadError) else writes
+    log.tell(ReplicationWrite(writes2, Map(remoteId -> ReplicationMetadata(0, metadata)), false, Actor.noSender), Actor.noSender)
+  }
+
+  def write2(log: ActorRef, remoteId: String, remoteId2: String, events: Seq[VectorTime], fail: Boolean = false) = {
+    val writes = events.map(vt => DurableEvent(payload = "", vectorTimestamp = vt, processId = remoteId2))
+    val metadata = events.fold(VectorTime.Zero)(_ merge _)
+    val writes2 = if (fail) writes :+ DurableEvent(payload = payloadError) else writes
+    log.tell(ReplicationWrite(writes2, Map(remoteId -> ReplicationMetadata(0, metadata)), false, Actor.noSender), Actor.noSender)
+  }
+
+  case class RemoteEventLog(id: String) {
+    private var cTVV = VectorTime.Zero
+
+    def sendReplicationRead(cTVV: VectorTime, fail: Boolean = false)(implicit log: LocalEventLog) = {
+      val fromSeqNr = if (fail) fromSequenceNrError else 0
+      log.ref.tell(ReplicationRead(fromSeqNr, 10, 10, ReplicationFilter.NoFilter, id, null, cTVV), null)
+    }
+
+    def events(timestamps: Seq[VectorTime], fail: Boolean = false): Seq[DurableEvent] = {
+      val writes = timestamps.map(vt => DurableEvent(payload = "", vectorTimestamp = vt, processId = id))
+      val metadata = timestamps.fold(VectorTime.Zero)(_ merge _)
+      //val writes2 = if (fail) writes :+ DurableEvent(payload = StabilitySpec.payloadError) else writes
+      //log.tell(ReplicationWrite(writes2, Map(remoteId -> ReplicationMetadata(0, metadata)), false, system.deadLetters), system.deadLetters)
+      writes // TODO
+
+    }
+
+    def expectedUpdate(cTVV: VectorTime) = MostRecentlyViewedTimestamps(id, cTVV)
+
+    def sendReplicaVersionVectors(vts: Map[String, VectorTime])(implicit log: LocalEventLog) = {
+      log.ref.tell(ReplicaVersionVectors(vts), null)
+    }
+  }
+}
+
+trait EventLogTest {
+  val localId = "L"
+  val remoteId1 = "R1"
+  val remoteId2 = "R2"
+  val TCStableZero = TCStable(VectorTime(localId -> 0, remoteId1 -> 0, remoteId2 -> 0))
+
+  var _log: ActorRef = _
+  val R1 = RemoteEventLog(remoteId1)
+  val R2 = RemoteEventLog(remoteId2)
+
+  def log: ActorRef = _log
+  implicit def localEventLog = LocalEventLog(log)
+  def vt(local: Long = 0, r1: Long = 0, r2: Long = 0) = VectorTime(localId -> local, remoteId1 -> r1, remoteId2 -> r2)
+
+}
+
+class EventLogStabilitySpec extends TestKit(ActorSystem("test", EventLogStabilitySpec.config)) with EventLogTest with WordSpecLike with BeforeAndAfterEach with BeforeAndAfterAll {
+
+  // TODO test ReplicationWriteN
+  import EventLogStabilitySpec._
+
+  override def afterAll {
+    TestKit.shutdownActorSystem(system)
+  }
+
+  override def beforeEach(): Unit = {
+    super.beforeEach()
+    //_probeActor = TestProbe()
+    _log = system.actorOf(Props(new DummyEventLog(localId) {
+      override def sendRTMUpdates(updates: MostRecentlyViewedTimestamps): Unit = testActor ! updates
+    }))
+  }
+
+  "An EventLog" should {
+    "send RTM updates when receives ReplicationRead from a remote EventLog" in {
+      R1.sendReplicationRead(cTVV = vt(local = 1, r1 = 0))
+      expectMsg(R1.expectedUpdate(vt(local = 1, r1 = 0)))
+      R1.sendReplicationRead(cTVV = vt(local = 1, r1 = 2))
+      expectMsg(R1.expectedUpdate(vt(local = 1, r1 = 2)))
+    }
+    "send RTM updates when receives ReplicationRead from a remote EventLog even if it fails" in {
+      R1.sendReplicationRead(cTVV = vt(local = 1, r1 = 3), fail = true)
+      expectMsg(R1.expectedUpdate(vt(local = 1, r1 = 3)))
+    }
+  }
+  "An EventLog" should {
+    "send RTM updates when receives a ReplicationWrite" in {
+      write(log, remoteId1, Seq(vt(local = 0, r1 = 1)))
+      expectMsg(R1.expectedUpdate(vt(local = 0, r1 = 1)))
+      expectMsg(MostRecentlyViewedTimestamps(Map(localId -> VectorTime(localId -> 0, remoteId1 -> 1, remoteId2 -> 0))))
+    }
+    "not send RTM update for its own entry if the write fails" in {
+      write(log, remoteId1, Seq(vt(local = 0, r1 = 1)), fail = true)
+      expectMsg(MostRecentlyViewedTimestamps(Map(remoteId1 -> vt(local = 0, r1 = 1))))
+      expectNoMsg()
+    }
+    "send RTM updates for endpoints that are not the one that is sending the ReplicationWrite" in {
+      write2(log, remoteId1, remoteId2, Seq(vt(local = 0, r1 = 1)))
+      expectMsg(MostRecentlyViewedTimestamps(Map(remoteId2 -> vt(local = 0, r1 = 1))))
+      expectMsg(MostRecentlyViewedTimestamps(Map(localId -> VectorTime(localId -> 0, remoteId1 -> 1, remoteId2 -> 0))))
+    }
+  }
+
+}
+
+class EventLogStabilitySpec2 extends TestKit(ActorSystem("test", EventLogStabilitySpec.config)) with EventLogTest with WordSpecLike with BeforeAndAfterEach with BeforeAndAfterAll {
+
+  import EventLogStabilitySpec._
+
+  override def afterAll {
+    TestKit.shutdownActorSystem(system)
+  }
+
+  override def beforeEach(): Unit = {
+    super.beforeEach()
+    _log = system.actorOf(Props(new DummyEventLog(localId)))
+  }
+
+  "Subscribers" should {
+    "receive TCStable" in {
+      log ! SubscribeTCStable(testActor)
+      R1.sendReplicationRead(cTVV = vt(local = 1, r1 = 0, r2 = 0))
+      expectNoMsg()
+
+      R2.sendReplicationRead(cTVV = vt(local = 2, r1 = 0, r2 = 0))
+      expectMsg(TCStable(VectorTime(localId -> 1, remoteId1 -> 0, remoteId2 -> 0)))
+
+      R1.sendReplicationRead(cTVV = vt(local = 2, r1 = 0, r2 = 0))
+      expectMsg(TCStable(VectorTime(localId -> 2, remoteId1 -> 0, remoteId2 -> 0)))
+    }
+    "not receive duplicate TCStable" in {
+      log ! SubscribeTCStable(testActor)
+      R1.sendReplicationRead(cTVV = vt(local = 1, r1 = 0, r2 = 0))
+      expectNoMsg()
+
+      R2.sendReplicationRead(cTVV = vt(local = 1, r1 = 0, r2 = 0))
+      expectMsg(TCStable(VectorTime(localId -> 1, remoteId1 -> 0, remoteId2 -> 0)))
+
+      R2.sendReplicationRead(cTVV = vt(local = 1, r1 = 1, r2 = 0))
+      expectNoMsg()
+    }
+    "not receive more TCStable if they are unsubscribed" in {
+      log ! SubscribeTCStable(testActor)
+      R1.sendReplicationRead(cTVV = vt(local = 1, r1 = 0, r2 = 0))
+      expectNoMsg()
+      R2.sendReplicationRead(cTVV = vt(local = 1, r1 = 0, r2 = 0))
+      expectMsg(TCStable(VectorTime(localId -> 1, remoteId1 -> 0, remoteId2 -> 0)))
+
+      log ! UnsubscribeTCStable(testActor)
+      R1.sendReplicationRead(cTVV = vt(local = 2, r1 = 0, r2 = 0))
+      R2.sendReplicationRead(cTVV = vt(local = 2, r1 = 0, r2 = 0))
+      expectNoMsg()
+    }
+  }
+
+}

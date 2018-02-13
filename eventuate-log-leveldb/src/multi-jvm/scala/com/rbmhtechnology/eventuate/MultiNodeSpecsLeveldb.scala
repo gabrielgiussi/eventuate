@@ -17,7 +17,7 @@
 package com.rbmhtechnology.eventuate
 
 import MultiNodeConfigLeveldb._
-
+/*
 class BasicReplicationSpecLeveldb extends BasicReplicationSpec(new BasicReplicationConfig(providerConfig)) with MultiNodeSupportLeveldb
 class BasicReplicationSpecLeveldbMultiJvmNode1 extends BasicReplicationSpecLeveldb
 class BasicReplicationSpecLeveldbMultiJvmNode2 extends BasicReplicationSpecLeveldb
@@ -42,3 +42,8 @@ class BasicPersistOnEventSpecLeveldbMultiJvmNode2 extends BasicPersistOnEventSpe
 class FailureDetectionSpecLeveldb extends FailureDetectionSpec(new FailureDetectionConfig(providerConfig)) with MultiNodeSupportLeveldb
 class FailureDetectionSpecLeveldbMultiJvmNode1 extends FailureDetectionSpecLeveldb
 class FailureDetectionSpecLeveldbMultiJvmNode2 extends FailureDetectionSpecLeveldb
+*/
+class StabilitySpecLeveldb extends BasicStabilitySpec(new StabilitySpecConfig(providerConfig)) with MultiNodeSupportLeveldb
+class StabilitySpecLeveldbMultiJvmNode1 extends StabilitySpecLeveldb
+class StabilitySpecLeveldbMultiJvmNode2 extends StabilitySpecLeveldb
+class StabilitySpecLeveldbMultiJvmNode3 extends StabilitySpecLeveldb

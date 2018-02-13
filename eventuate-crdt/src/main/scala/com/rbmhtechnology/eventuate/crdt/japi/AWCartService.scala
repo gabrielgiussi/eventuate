@@ -20,13 +20,14 @@ import java.lang.{ Integer => JInt }
 import java.util.concurrent.CompletionStage
 import java.util.{ Map => JMap }
 
-import akka.actor.{ ActorRef, ActorSystem }
-import com.rbmhtechnology.eventuate.crdt._
+import akka.actor.ActorRef
+import akka.actor.ActorSystem
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 
 import scala.collection.JavaConverters._
 
 /**
- * Replicated [[ORCart]] CRDT service.
+ * Replicated AWCart CRDT service.
  *
  *  - For adding a new `key` of given `quantity` a client should call `add`.
  *  - For incrementing the `quantity` of an existing `key` a client should call `add`.
@@ -36,16 +37,16 @@ import scala.collection.JavaConverters._
  *
  * @param serviceId Unique id of this service.
  * @param log Event log.
- * @tparam A [[ORCart]] key type.
+ * @tparam A AWCart key type.
  */
-class ORCartService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
-  extends CRDTService[ORCart[A], Map[A, Int], JMap[A, JInt]] {
+class AWCartService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
+  extends CRDTService[SimpleCRDT, Map[A, Int], JMap[A, JInt]] {
 
   import CRDTConverter._
   import system._
 
   override protected val delegate =
-    new com.rbmhtechnology.eventuate.crdt.ORCartService[A](serviceId, log)
+    new com.rbmhtechnology.eventuate.crdt.AWCartService[A](serviceId, log)
 
   implicit protected def c: CRDTConverter[Map[A, Int], JMap[A, JInt]] =
     CRDTConverter(_.mapValues(v => v: JInt).asJava)

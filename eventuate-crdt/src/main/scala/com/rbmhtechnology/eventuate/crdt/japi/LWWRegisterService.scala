@@ -19,21 +19,22 @@ package com.rbmhtechnology.eventuate.crdt.japi
 import java.util.concurrent.CompletionStage
 import java.util.{ Optional => JOption }
 
-import akka.actor.{ ActorRef, ActorSystem }
-import com.rbmhtechnology.eventuate.crdt.LWWRegister
+import akka.actor.ActorRef
+import akka.actor.ActorSystem
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
 
 import scala.compat.java8.OptionConverters._
 
 /**
- * Java API of a replicated [[LWWRegister]] CRDT service.
+ * Java API of a replicated LWWRegister CRDT service.
  *
  * @param serviceId Unique id of this service.
  * @param log       Event log.
  * @param system    Actor system.
- * @tparam A [[LWWRegister]] value type.
+ * @tparam A LWWRegister value type.
  */
 class LWWRegisterService[A](val serviceId: String, val log: ActorRef, implicit val system: ActorSystem)
-  extends CRDTService[LWWRegister[A], Option[A], JOption[A]] {
+  extends CRDTService[SimpleCRDT, Option[A], JOption[A]] {
 
   import CRDTConverter._
   import system._

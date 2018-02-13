@@ -55,6 +55,8 @@ object ReplicationProtocolSerializerSpec {
   val replicationReadFailureWithIncompatibleApplicationVersionException =
     ReplicationReadFailure(IncompatibleApplicationVersionException("A", ApplicationVersion(2, 1), ApplicationVersion(3, 2)), "B")
 
+  val replicaVersionVectors = ReplicaVersionVectors(Map("a" -> VectorTime("a" -> 15L), "b" -> VectorTime("a" -> 1L, "b" -> 2L)))
+
   def replicationRead1(r: ActorRef) =
     ReplicationRead(17L, 10, 100, filter1(), "A", r, VectorTime("X" -> 12L))
 
@@ -117,6 +119,9 @@ class ReplicationProtocolSerializerSpec extends WordSpec with Matchers with Befo
     "serialize ReplicationReadFailure messages with an ApplicationVersionIncompatibleException cause" in {
       serializations(0).deserialize(serializations(0).serialize(replicationReadFailureWithIncompatibleApplicationVersionException).get, classOf[ReplicationReadFailure]).get should be(replicationReadFailureWithIncompatibleApplicationVersionException)
     }
+    "serialize ReplicaVersionVectors messages" in {
+      serializations(0).deserialize(serializations(0).serialize(replicaVersionVectors).get, classOf[ReplicaVersionVectors]).get should be(replicaVersionVectors)
+    }
     "support remoting of GetReplicationEndpointInfo messages" in {
       senderActor ! GetReplicationEndpointInfo
       receiverProbe.expectMsg(GetReplicationEndpointInfo)
@@ -142,6 +147,10 @@ class ReplicationProtocolSerializerSpec extends WordSpec with Matchers with Befo
     "support remoting of ReplicationReadFailure messages with an ApplicationVersionIncompatibleException cause" in {
       senderActor ! replicationReadFailureWithIncompatibleApplicationVersionException
       receiverProbe.expectMsg(replicationReadFailureWithIncompatibleApplicationVersionException)
+    }
+    "support remoting of ReplicaVersionVectors messages" in {
+      senderActor ! replicaVersionVectors
+      receiverProbe.expectMsg(replicaVersionVectors)
     }
   }
 }

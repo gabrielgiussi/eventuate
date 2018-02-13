@@ -49,6 +49,7 @@ class ReplicationProtocolSerializer(system: ExtendedActorSystem) extends Seriali
   val ReplicationDueClass = ReplicationDue.getClass
   val ReplicationReadSourceExceptionClass = classOf[ReplicationReadSourceException]
   val IncompatibleApplicationVersionExceptionClass = classOf[IncompatibleApplicationVersionException]
+  val ReplicaVersionVectorsClass = classOf[ReplicaVersionVectors]
 
   override def identifier: Int = 22565
   override def includeManifest: Boolean = true
@@ -81,6 +82,8 @@ class ReplicationProtocolSerializer(system: ExtendedActorSystem) extends Seriali
         incompatibleApplicationVersionExceptionFormatBuilder(m).build().toByteArray
       case m: SynchronizeReplicationProgressSourceException =>
         synchronizeReplicationProgressSourceExceptionFormatBuilder(m).build().toByteArray
+      case m: ReplicaVersionVectors =>
+        replicaVersionVectorsFormatBuilder(m).build().toByteArray
       case _ =>
         throw new IllegalArgumentException(s"can't serialize object of type ${o.getClass}")
     }
@@ -115,6 +118,8 @@ class ReplicationProtocolSerializer(system: ExtendedActorSystem) extends Seriali
         incompatibleApplicationVersionException(IncompatibleApplicationVersionExceptionFormat.parseFrom(bytes))
       case SynchronizeReplicationProgressSourceExceptionClass =>
         synchronizeReplicationProgressSourceException(SynchronizeReplicationProgressSourceExceptionFormat.parseFrom(bytes))
+      case ReplicaVersionVectorsClass =>
+        replicaVersionVectors(ReplicaVersionVectorsFormat.parseFrom(bytes))
       case _ =>
         throw new IllegalArgumentException(s"can't deserialize object of type ${clazz}")
     }
@@ -212,6 +217,16 @@ class ReplicationProtocolSerializer(system: ExtendedActorSystem) extends Seriali
   private def synchronizeReplicationProgressSourceExceptionFormatBuilder(ex: SynchronizeReplicationProgressSourceException): SynchronizeReplicationProgressSourceExceptionFormat.Builder =
     SynchronizeReplicationProgressSourceExceptionFormat.newBuilder().setMessage(ex.message)
 
+  private def replicaVersionVectorsFormatBuilder(r: ReplicaVersionVectors): ReplicaVersionVectorsFormat.Builder = {
+    val builder = ReplicaVersionVectorsFormat.newBuilder
+    r.timestamps.foreach { entry =>
+      builder.addEntries(VectorTimeMapEntryFormat.newBuilder
+        .setProcessId(entry._1)
+        .setVectorTime(commonSerializer.vectorTimeFormatBuilder(entry._2)))
+    }
+    builder
+  }
+
   // --------------------------------------------------------------------------------
   //  fromBinary helpers
   // --------------------------------------------------------------------------------
@@ -288,4 +303,7 @@ class ReplicationProtocolSerializer(system: ExtendedActorSystem) extends Seriali
 
   private def synchronizeReplicationProgressSourceException(exceptionFormat: SynchronizeReplicationProgressSourceExceptionFormat): SynchronizeReplicationProgressSourceException =
     SynchronizeReplicationProgressSourceException(exceptionFormat.getMessage)
+
+  private def replicaVersionVectors(format: ReplicaVersionVectorsFormat): ReplicaVersionVectors =
+    ReplicaVersionVectors(format.getEntriesList.iterator.asScala.map(e => e.getProcessId -> commonSerializer.vectorTime(e.getVectorTime)).toMap)
 }

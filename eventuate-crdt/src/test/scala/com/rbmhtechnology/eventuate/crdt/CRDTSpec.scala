@@ -16,185 +16,342 @@
 
 package com.rbmhtechnology.eventuate.crdt
 
-import com.rbmhtechnology.eventuate.VectorTime
-
+import com.rbmhtechnology.eventuate.crdt.CRDTTestDSL.VectorTimeControl
 import org.scalatest._
 
-class CRDTSpec extends WordSpec with Matchers with BeforeAndAfterEach {
-  val mvReg = MVRegister[Int]()
-  val lwwReg = LWWRegister[Int]()
-  val orSet = ORSet[Int]()
-  val orShoppingCart = ORCart[String]()
+class CRDTSpec extends WordSpec with Matchers {
+  val counter = CounterService.zero[Int]
+  val awSet = AWSetService.zero[Int]
+  val crdt = CRDT.zero
+  val tpSet = TPSetService.zero[Int]
 
-  def vectorTime(t1: Long, t2: Long): VectorTime =
-    VectorTime("p1" -> t1, "p2" -> t2)
-
-  "An MVRegister" must {
-    "not have set a value by default" in {
-      mvReg.value should be('empty)
+  "A Counter" must {
+    import CRDTTestDSL.CounterCRDT._
+    "have a default value 0" in new VectorTimeControl {
+      counter.value shouldBe 0
     }
-    "store a single value" in {
-      mvReg
-        .assign(1, vectorTime(1, 0))
+    "return value of single operation" in new VectorTimeControl {
+      counter
+        .update(5, vt(1, 0))
+        .value shouldBe 5
+    }
+    "return sum of operations" in new VectorTimeControl {
+      counter
+        .update(6, vt(1, 0))
+        .update(6, vt(2, 0))
+        .value shouldBe 12
+    }
+    "return sum of concurrent operations" in new VectorTimeControl {
+      counter
+        .update(6, vt(1, 0))
+        .update(3, vt(0, 1))
+        .value shouldBe 9
+    }
+    "return the sum of positive and negative operations" in new VectorTimeControl {
+      counter
+        .update(2, vt(1, 0))
+        .update(-4, vt(2, 1))
+        .value shouldBe -2
+    }
+  }
+
+  "An AWSet" must {
+    import CRDTTestDSL.AWSetCRDT._
+    "be empty by default" in new VectorTimeControl {
+      awSet.value should be('empty)
+    }
+    "add an entry" in new VectorTimeControl {
+      awSet
+        .add(1, vt(1, 0))
         .value should be(Set(1))
     }
-    "store multiple values in case of concurrent writes" in {
-      mvReg
-        .assign(1, vectorTime(1, 0))
-        .assign(2, vectorTime(0, 1))
+    "mask sequential duplicates" in new VectorTimeControl {
+      awSet
+        .add(1, vt(1, 0))
+        .add(1, vt(2, 0))
+        .value should be(Set(1))
+    }
+    "mask concurrent duplicates" in new VectorTimeControl {
+      awSet
+        .add(1, vt(1, 0))
+        .add(1, vt(0, 1))
+        .value should be(Set(1))
+    }
+    "remove a pair" in new VectorTimeControl {
+      awSet
+        .add(1, vt(1, 0))
+        .remove(1, vt(2, 0))
+        .value should be(Set())
+    }
+    "keep an entry if not all pairs are removed" in new VectorTimeControl {
+      awSet
+        .add(1, vt(1, 0))
+        .add(1, vt(0, 1))
+        .remove(1, vt(2, 0))
+        .value should be(Set(1))
+    }
+    "add an entry if concurrent to remove" in new VectorTimeControl {
+      awSet
+        .add(1, vt(1, 0))
+        .remove(1, vt(2, 0))
+        .add(1, vt(0, 1))
+        .value should be(Set(1))
+    }
+    "return an empty set after a remove" in new VectorTimeControl {
+      awSet
+        .remove(1, vt(1, 0))
+        .value should be(Set())
+    }
+    "return an empty set after a clear" in new VectorTimeControl {
+      awSet
+        .clear(vt(1, 0))
+        .value should be(Set())
+    }
+    "remove all entries after a clear" in new VectorTimeControl {
+      awSet
+        .add(1, vt(1, 0))
+        .add(2, vt(2, 0))
+        .add(3, vt(0, 1))
+        .clear(vt(2, 2))
+        .value should be(Set())
+    }
+    "remove all entries in the causal past after a clear" in new VectorTimeControl {
+      awSet
+        .add(1, vt(1, 0))
+        .add(2, vt(2, 0))
+        .add(3, vt(0, 1))
+        .clear(vt(3, 0))
+        .value should be(Set(3))
+    }
+
+  }
+  "An MVRegister" must {
+    import CRDTTestDSL.MVRegisterCRDT._
+    "not have set a value by default" in new VectorTimeControl {
+      crdt.value should be('empty)
+    }
+    "store a single value" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0))
+        .value should be(Set(1))
+    }
+    "store multiple values in case of concurrent writes" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0))
+        .assign(2, vt(0, 1))
         .value should be(Set(1, 2))
     }
-    "mask duplicate concurrent writes" in {
-      mvReg
-        .assign(1, vectorTime(1, 0))
-        .assign(1, vectorTime(0, 1))
+    "mask duplicate concurrent writes" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0))
+        .assign(1, vt(0, 1))
         .value should be(Set(1))
     }
-    "replace a value if it happened before a new write" in {
-      mvReg
-        .assign(1, vectorTime(1, 0))
-        .assign(2, vectorTime(2, 0))
+    "replace a value if it happened before a new write" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0))
+        .assign(2, vt(2, 0))
         .value should be(Set(2))
     }
-    "replace a value if it happened before a new write and retain a value if it is concurrent to the new write" in {
-      mvReg
-        .assign(1, vectorTime(1, 0))
-        .assign(2, vectorTime(0, 1))
-        .assign(3, vectorTime(2, 0))
+    "replace a value if it happened before a new write and retain a value if it is concurrent to the new write" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0))
+        .assign(2, vt(0, 1))
+        .assign(3, vt(2, 0))
         .value should be(Set(2, 3))
     }
-    "replace multiple concurrent values if they happened before a new write" in {
-      mvReg
-        .assign(1, vectorTime(1, 0))
-        .assign(2, vectorTime(0, 1))
-        .assign(3, vectorTime(1, 1))
+    "replace multiple concurrent values if they happened before a new write" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0))
+        .assign(2, vt(0, 1))
+        .assign(3, vt(1, 1))
         .value should be(Set(3))
     }
   }
-
   "An LWWRegister" must {
-    "not have a value by default" in {
-      lwwReg.value should be('empty)
+    import CRDTTestDSL.LWWRegisterCRDT._
+    "not have a value by default" in new VectorTimeControl {
+      crdt.value should be('empty)
     }
-    "store a single value" in {
-      lwwReg
-        .assign(1, vectorTime(1, 0), 0, "source-1")
+    "store a single value" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0), 0, "source-1")
         .value should be(Some(1))
     }
-    "accept a new value if was set after the current value according to the vector clock" in {
-      lwwReg
-        .assign(1, vectorTime(1, 0), 1, "emitter-1")
-        .assign(2, vectorTime(2, 0), 0, "emitter-2")
+    "accept a new value if was set after the current value according to the vector clock" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0), 1, "emitter-1")
+        .assign(2, vt(2, 0), 0, "emitter-2")
         .value should be(Some(2))
     }
-    "fallback to the wall clock if the values' vector clocks are concurrent" in {
-      lwwReg
-        .assign(1, vectorTime(1, 0), 0, "emitter-1")
-        .assign(2, vectorTime(0, 1), 1, "emitter-2")
+
+    "fallback to the wall clock if the values' vector clocks are concurrent" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0), 0, "emitter-1")
+        .assign(2, vt(0, 1), 1, "emitter-2")
         .value should be(Some(2))
-      lwwReg
-        .assign(1, vectorTime(1, 0), 1, "emitter-1")
-        .assign(2, vectorTime(0, 1), 0, "emitter-2")
+
+      clearVTHistory()
+
+      crdt
+        .assign(1, vt(1, 0), 1, "emitter-1")
+        .assign(2, vt(0, 1), 0, "emitter-2")
         .value should be(Some(1))
     }
-    "fallback to the greatest emitter if the values' vector clocks and wall clocks are concurrent" in {
-      lwwReg
-        .assign(1, vectorTime(1, 0), 0, "emitter-1")
-        .assign(2, vectorTime(0, 1), 0, "emitter-2")
+    "fallback to the greatest emitter if the values' vector clocks and wall clocks are concurrent" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0), 0, "emitter-1")
+        .assign(2, vt(0, 1), 0, "emitter-2")
         .value should be(Some(2))
-      lwwReg
-        .assign(1, vectorTime(1, 0), 0, "emitter-2")
-        .assign(2, vectorTime(0, 1), 0, "emitter-1")
+
+      clearVTHistory()
+
+      crdt
+        .assign(1, vt(1, 0), 0, "emitter-2")
+        .assign(2, vt(0, 1), 0, "emitter-1")
         .value should be(Some(1))
+    }
+    "return none value after just a clear" in new VectorTimeControl {
+      crdt
+        .clear(vt(1, 0))
+        .value shouldBe None
+    }
+    "remove all values after a clear" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0), 0, "emmiter1")
+        .assign(2, vt(2, 0), 1, "emmiter1")
+        .assign(3, vt(0, 1), 2, "emmiter2")
+        .clear(vt(2, 2))
+        .value shouldBe None
+    }
+    "remove only values in the causal past of a clear" in new VectorTimeControl {
+      crdt
+        .assign(1, vt(1, 0), 0, "emitter-1")
+        .assign(2, vt(0, 1), 0, "emitter-2")
+        .clear(vt(0, 2))
+        .value shouldBe Some(1)
     }
   }
-
-  "An ORSet" must {
+  "An AWCart" must {
+    import CRDTTestDSL.AWCartCRDT._
     "be empty by default" in {
-      orSet.value should be('empty)
+      crdt.value should be('empty)
     }
-    "add an entry" in {
-      orSet
-        .add(1, vectorTime(1, 0))
-        .value should be(Set(1))
-    }
-    "mask sequential duplicates" in {
-      orSet
-        .add(1, vectorTime(1, 0))
-        .add(1, vectorTime(2, 0))
-        .value should be(Set(1))
-    }
-    "mask concurrent duplicates" in {
-      orSet
-        .add(1, vectorTime(1, 0))
-        .add(1, vectorTime(0, 1))
-        .value should be(Set(1))
-    }
-    "remove a pair" in {
-      orSet
-        .add(1, vectorTime(1, 0))
-        .remove(Set(vectorTime(1, 0)))
-        .value should be(Set())
-    }
-    "remove an entry by removing all pairs" in {
-      val tmp = orSet
-        .add(1, vectorTime(1, 0))
-        .add(1, vectorTime(2, 0))
-
-      tmp
-        .remove(tmp.prepareRemove(1))
-        .value should be(Set())
-    }
-    "keep an entry if not all pairs are removed" in {
-      orSet
-        .add(1, vectorTime(1, 0))
-        .add(1, vectorTime(2, 0))
-        .remove(Set(vectorTime(1, 0)))
-        .value should be(Set(1))
-    }
-    "add an entry if concurrent to remove" in {
-      orSet
-        .add(1, vectorTime(1, 0))
-        .remove(Set(vectorTime(1, 0)))
-        .add(1, vectorTime(0, 1))
-        .value should be(Set(1))
-    }
-    "prepare a remove-set if it contains the given entry" in {
-      orSet
-        .add(1, vectorTime(1, 0))
-        .prepareRemove(1) should be(Set(vectorTime(1, 0)))
-    }
-    "not prepare a remove-set if it doesn't contain the given entry" in {
-      orSet.prepareRemove(1) should be('empty)
-    }
-  }
-
-  "An ORCart" must {
-    "be empty by default" in {
-      orShoppingCart.value should be('empty)
-    }
-    "set initial entry quantities" in {
-      orShoppingCart
-        .add("a", 2, vectorTime(1, 0))
-        .add("b", 3, vectorTime(2, 0))
+    "set initial entry quantities" in new VectorTimeControl {
+      crdt
+        .add("a", 2, vt(1, 0))
+        .add("b", 3, vt(2, 0))
         .value should be(Map("a" -> 2, "b" -> 3))
     }
-    "increment existing entry quantities" in {
-      orShoppingCart
-        .add("a", 1, vectorTime(1, 0))
-        .add("b", 3, vectorTime(2, 0))
-        .add("a", 1, vectorTime(3, 0))
-        .add("b", 1, vectorTime(4, 0))
+    "increment existing entry quantities" in new VectorTimeControl {
+      crdt
+        .add("a", 1, vt(1, 0))
+        .add("b", 3, vt(2, 0))
+        .add("a", 1, vt(3, 0))
+        .add("b", 1, vt(4, 0))
         .value should be(Map("a" -> 2, "b" -> 4))
     }
-    "remove observed entries" in {
-      orShoppingCart
-        .add("a", 2, vectorTime(1, 0))
-        .add("b", 3, vectorTime(2, 0))
-        .add("a", 1, vectorTime(3, 0))
-        .add("b", 1, vectorTime(4, 0))
-        .remove(Set(vectorTime(1, 0), vectorTime(2, 0), vectorTime(3, 0)))
+    "remove observed entries" in new VectorTimeControl {
+      crdt
+        .add("a", 2, vt(1, 0))
+        .add("b", 3, vt(2, 0))
+        .add("a", 1, vt(3, 0))
+        .remove("b", vt(4, 0))
+        .add("b", 1, vt(5, 0))
+        .remove("a", vt(6, 0))
         .value should be(Map("b" -> 1))
     }
+    "not remove entries if remove is concurrent" in new VectorTimeControl {
+      crdt
+        .add("a", 2, vt(1, 0))
+        .remove("a", vt(0, 1))
+        .value should be(Map("a" -> 2))
+    }
+    "remove only entries in the causal past" in new VectorTimeControl {
+      crdt
+        .add("a", 2, vt(1, 0))
+        .add("a", 2, vt(3, 0))
+        .remove("a", vt(1, 1))
+        .value should be(Map("a" -> 2))
+    }
+    "return empty after just a clear" in new VectorTimeControl {
+      crdt
+        .clear(vt(1, 0))
+        .value should be('empty)
+    }
+    "remove all entries after just a clear" in new VectorTimeControl {
+      crdt
+        .add("a", 1, vt(1, 0))
+        .add("b", 2, vt(2, 0))
+        .add("a", 1, vt(0, 1))
+        .clear(vt(2, 2))
+        .value should be('empty)
+    }
+    "remove all entries in the causal past after a clear" in new VectorTimeControl {
+      crdt
+        .add("a", 1, vt(1, 0))
+        .add("b", 2, vt(0, 1))
+        .add("a", 1, vt(2, 0))
+        .clear(vt(1, 2))
+        .value should be(Map("a" -> 1))
+    }
+
   }
+
+  "A TPSet" must {
+    import CRDTTestDSL.TPSetCRDT._
+    "be empty by default" in {
+      tpSet.value shouldBe Set.empty
+    }
+    "add an entry" in new VectorTimeControl {
+      tpSet
+        .add(1, vt(1, 0))
+        .value should be(Set(1))
+    }
+    "mask sequential duplicates" in new VectorTimeControl {
+      tpSet
+        .add(1, vt(1, 0))
+        .add(1, vt(2, 0))
+        .value should be(Set(1))
+    }
+    "mask concurrent duplicates" in new VectorTimeControl {
+      tpSet
+        .add(1, vt(1, 0))
+        .add(1, vt(0, 1))
+        .value should be(Set(1))
+    }
+    "remove a pair" in new VectorTimeControl {
+      tpSet
+        .add(1, vt(1, 0))
+        .remove(1, vt(2, 0))
+        .value should be(Set())
+    }
+    "don't add an element that was removed" in new VectorTimeControl {
+      tpSet
+        .add(1, vt(1, 0))
+        .remove(1, vt(0, 1))
+        .add(1, vt(2, 1))
+        .value should be(Set())
+    }
+    "commute" in new VectorTimeControl {
+      tpSet
+        .add(1, vt(1, 0))
+        .remove(1, vt(0, 1))
+        .value should be(Set())
+
+      clearVTHistory()
+
+      tpSet
+        .remove(1, vt(0, 1))
+        .add(1, vt(1, 0))
+        .value should be(Set())
+    }
+    "return an empty set after a remove" in new VectorTimeControl {
+      tpSet
+        .remove(1, vt(1, 0))
+        .value should be(Set())
+    }
+
+  }
+
 }

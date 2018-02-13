@@ -21,8 +21,10 @@ import java.util.concurrent.TimeUnit
 import akka.actor._
 import akka.pattern.ask
 import akka.util.Timeout
-
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
+import com.rbmhtechnology.eventuate.log.StabilityChannel.SubscribeTCStable
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 import com.typesafe.config.Config
 
 import scala.concurrent.{ ExecutionContext, Future }
@@ -46,7 +48,9 @@ trait CRDTServiceOps[A, B] {
   /**
    * Returns the CRDT value (for example, the entries of an OR-Set)
    */
-  def value(crdt: A): B
+  final def value(crdt: A): B = eval(crdt)
+
+  def eval(crdt: A): B
 
   /**
    * Must return `true` if CRDT checks preconditions. Should be overridden to return
@@ -58,21 +62,40 @@ trait CRDTServiceOps[A, B] {
   /**
    * Update phase 1 ("atSource"). Prepares an operation for phase 2.
    */
-  def prepare(crdt: A, operation: Any): Try[Option[Any]] = Success(Some(operation))
+  def prepare(crdt: A, operation: Operation): Try[Option[Operation]] = Success(Some(operation))
 
   /**
    * Update phase 2 ("downstream").
    */
-  def effect(crdt: A, operation: Any, event: DurableEvent): A
+  def effect(crdt: A, op: Operation, vt: VectorTime, systemTimestamp: Long = 0L, creator: String = ""): A
+
+  /**
+   * This mechanism allows to discard stable operations, not only timestamps, if they have no
+   * impact on the semantics of the data type. For some data types like RWSet
+   * some operations become useless once other future operations become stable"
+   *
+   * @param crdt a crdt
+   * @param stable the TCStable delivered by the TCSB middleware
+   * @return the crdt after being applied causal stabilization. By default it returns the same crdt unmodified
+   */
+  def stable(crdt: A, stable: TCStable) = crdt
+
+  /**
+   * Must return `true` if the CRDT should receive [[TCStable]] for causal stabilization.
+   * By default it returns false because it only makes sense for pure op-based CRDTs.
+   */
+  def subscribeToStable: Boolean = false
 }
 
 object CRDTService {
+
   /**
    * Persistent event with update operation.
    *
    * @param operation update operation.
    */
-  case class ValueUpdated(operation: Any) extends CRDTFormat
+  case class ValueUpdated(operation: Operation) extends CRDTFormat
+
 }
 
 private class CRDTServiceSettings(config: Config) {
@@ -89,6 +112,7 @@ private class CRDTServiceSettings(config: Config) {
  * @tparam B CRDT value type
  */
 trait CRDTService[A, B] {
+
   import CRDTService._
 
   private var manager: Option[ActorRef] = None
@@ -152,7 +176,15 @@ trait CRDTService[A, B] {
    * Updates the CRDT identified by `id` with given `operation`.
    * Returns the updated value of the CRDT.
    */
-  protected def op(id: String, operation: Any): Future[B] = withManagerAndDispatcher { (w, d) =>
+  def stable(id: String, t: VectorTime): Future[String] = withManagerAndDispatcher { (w, d) =>
+    w.ask(MarkStable(id, t)).mapTo[MarkStableReply].map(_.id)(d)
+  }
+
+  def timestamps(id: String): Future[Set[VectorTime]] = withManagerAndDispatcher { (w, d) =>
+    w.ask(GetTimestamps(id)).mapTo[GetTimestampsReply].map(_.timestamps)(d)
+  }
+
+  protected def op(id: String, operation: Operation): Future[B] = withManagerAndDispatcher { (w, d) =>
     w.ask(Update(id, operation)).mapTo[UpdateReply].map(_.value)(d)
   }
 
@@ -166,15 +198,26 @@ trait CRDTService[A, B] {
   }
 
   private case class Get(id: String) extends Identified
+
   private case class GetReply(id: String, value: B) extends Identified
 
-  private case class Update(id: String, operation: Any) extends Identified
+  private case class Update(id: String, operation: Operation) extends Identified
+
   private case class UpdateReply(id: String, value: B) extends Identified
 
   private case class Save(id: String) extends Identified
+
   private case class SaveReply(id: String, metadata: SnapshotMetadata) extends Identified
 
-  private case class OnChange(crdt: A, operation: Any)
+  private case class MarkStable(id: String, timestamp: VectorTime) extends Identified
+
+  private case class MarkStableReply(id: String) extends Identified
+
+  private case class GetTimestamps(id: String) extends Identified
+
+  case class GetTimestampsReply(timestamps: Set[VectorTime])
+
+  private case class OnChange(crdt: A, operation: Option[Operation])
 
   private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor {
     override val id =
@@ -186,8 +229,9 @@ trait CRDTService[A, B] {
     var crdt: A =
       ops.zero
 
-    override def stateSync: Boolean =
-      ops.precondition
+    if (ops.subscribeToStable) eventLog ! SubscribeTCStable(self)
+
+    override def stateSync: Boolean = ops.precondition
 
     override def onCommand = {
       case Get(`crdtId`) =>
@@ -213,19 +257,23 @@ trait CRDTService[A, B] {
           case Failure(err) =>
             sender() ! Status.Failure(err)
         }
+      case s: TCStable =>
+        crdt = ops.stable(crdt, s)
+        onStable(crdt, s)
     }
 
     override def onEvent = {
       case evt @ ValueUpdated(operation) =>
-        crdt = ops.effect(crdt, operation, lastHandledEvent)
-        context.parent ! OnChange(crdt, operation)
+        crdt = ops.effect(crdt, operation, lastHandledEvent.vectorTimestamp, lastHandledEvent.systemTimestamp, lastHandledEvent.emitterId)
+        context.parent ! OnChange(crdt, Some(operation))
     }
 
     override def onSnapshot = {
       case snapshot =>
         crdt = snapshot.asInstanceOf[A]
-        context.parent ! OnChange(crdt, null)
+        context.parent ! OnChange(crdt, None)
     }
+
   }
 
   private class CRDTManager extends Actor {
@@ -253,5 +301,7 @@ trait CRDTService[A, B] {
   }
 
   /** For testing purposes only */
-  private[crdt] def onChange(crdt: A, operation: Any): Unit = ()
+  private[crdt] def onChange(crdt: A, operation: Option[Operation]): Unit = ()
+
+  private[crdt] def onStable(crdt: A, stable: TCStable): Unit = ()
 }

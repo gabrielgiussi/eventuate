@@ -20,13 +20,14 @@ import akka.actor._
 import akka.remote.testkit._
 import akka.remote.transport.ThrottlerTransportAdapter.Direction
 import akka.testkit.TestProbe
-
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.typesafe.config.ConfigFactory
 
-class ReplicatedORSetSpecLeveldb extends ReplicatedORSetSpec with MultiNodeSupportLeveldb
-class ReplicatedORSetSpecLeveldbMultiJvmNode1 extends ReplicatedORSetSpecLeveldb
-class ReplicatedORSetSpecLeveldbMultiJvmNode2 extends ReplicatedORSetSpecLeveldb
+class ReplicatedAWSetSpecLeveldb extends ReplicatedAWSetSpec with MultiNodeSupportLeveldb
+class ReplicatedAWSetSpecLeveldbMultiJvmNode1 extends ReplicatedAWSetSpecLeveldb
+class ReplicatedAWSetSpecLeveldbMultiJvmNode2 extends ReplicatedAWSetSpecLeveldb
 
 object ReplicatedORSetConfig extends MultiNodeReplicationConfig {
   val nodeA = role("nodeA")
@@ -43,22 +44,23 @@ object ReplicatedORSetConfig extends MultiNodeReplicationConfig {
   setConfig(customConfig.withFallback(MultiNodeConfigLeveldb.providerConfig))
 }
 
-abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) with MultiNodeWordSpec with MultiNodeReplicationEndpoint {
+abstract class ReplicatedAWSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) with MultiNodeWordSpec with MultiNodeReplicationEndpoint {
   import ReplicatedORSetConfig._
+  import CRDTTestDSL.AWSetCRDT
 
   def initialParticipants: Int =
     roles.size
 
   muteDeadLetters(classOf[AnyRef])(system)
 
-  "A replicated ORSet" must {
+  "A replicated AWSet" must {
     "converge" in {
       val probe = TestProbe()
 
       runOn(nodeA) {
         val endpoint = createEndpoint(nodeA.name, Set(node(nodeB).address.toReplicationConnection))
-        val service = new ORSetService[Int]("A", endpoint.log) {
-          override private[crdt] def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value
+        val service = new AWSetService[Int]("A", endpoint.log) {
+          override private[crdt] def onChange(crdt: AWSet[Int], operation: Option[Operation]): Unit = probe.ref ! ops.value(crdt)
         }
 
         service.add("x", 1)
@@ -83,8 +85,8 @@ abstract class ReplicatedORSetSpec extends MultiNodeSpec(ReplicatedORSetConfig) 
 
       runOn(nodeB) {
         val endpoint = createEndpoint(nodeB.name, Set(node(nodeA).address.toReplicationConnection))
-        val service = new ORSetService[Int]("B", endpoint.log) {
-          override private[crdt] def onChange(crdt: ORSet[Int], operation: Any): Unit = probe.ref ! crdt.value
+        val service = new AWSetService[Int]("B", endpoint.log) {
+          override private[crdt] def onChange(crdt: AWSet[Int], operation: Option[Operation]): Unit = probe.ref ! ops.value(crdt)
         }
 
         service.value("x")

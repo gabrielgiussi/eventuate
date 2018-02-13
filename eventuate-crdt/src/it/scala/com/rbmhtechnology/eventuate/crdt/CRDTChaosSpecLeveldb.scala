@@ -21,13 +21,13 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import akka.actor.Props
 import akka.testkit.TestProbe
-
 import com.rbmhtechnology.eventuate._
+import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
 import com.rbmhtechnology.eventuate.crdt.CRDTService.ValueUpdated
+import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.log._
 import com.rbmhtechnology.eventuate.log.leveldb._
 import com.typesafe.config.ConfigFactory
-
 import org.scalatest._
 
 import scala.collection.immutable.Seq
@@ -49,9 +49,10 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
       if (events.map(_.payload).contains(ValueUpdated(AddOp(randomNr())))) throw IntegrationTestException else super.write(events, partition, clock)
   }
 
+  // FIXME allow use write-batch-size > 1
   val customConfig = ConfigFactory.parseString(
     """
-      |eventuate.log.write-batch-size = 3
+      |eventuate.log.write-batch-size = 1
       |eventuate.log.replication.retry-delay = 100ms
     """.stripMargin)
 
@@ -63,18 +64,18 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
     if (batching) Props(new BatchingLayer(logProps)) else logProps
   }
 
-  def service(endpoint: ReplicationEndpoint): (ORSetService[String], TestProbe) = {
+  def service(endpoint: ReplicationEndpoint): (AWSetService[String], TestProbe) = {
     implicit val system = endpoint.system
 
     val probe = TestProbe()
-    val service = new ORSetService[String](endpoint.id, endpoint.logs("L1")) {
+    val service = new AWSetService[String](endpoint.id, endpoint.logs("L1")) {
       val startCounter = new AtomicInteger()
       val stopCounter = new AtomicInteger()
 
-      override private[crdt] def onChange(crdt: ORSet[String], operation: Any): Unit = {
+      override private[crdt] def onChange(crdt: AWSet[String], operation: Option[Operation]): Unit = {
         operation match {
-          case AddOp(entry: String) if entry.startsWith("start") => startCounter.incrementAndGet()
-          case AddOp(entry: String) if entry.startsWith("stop") => stopCounter.incrementAndGet()
+          case Some(AddOp(entry: String)) if entry.startsWith("start") => startCounter.incrementAndGet()
+          case Some(AddOp(entry: String)) if entry.startsWith("stop") => stopCounter.incrementAndGet()
           case _ =>
         }
 
@@ -84,7 +85,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
         }
 
         if (stopCounter.get == 4) {
-          probe.ref ! crdt.value.filterNot(s => s.startsWith("start") || s.startsWith("stop"))
+          probe.ref ! ops.value(crdt).filterNot(s => s.startsWith("start") || s.startsWith("stop"))
           stopCounter.set(0)
         }
       }
@@ -93,7 +94,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
     (service, probe)
   }
 
-  "A replicated ORSet" must {
+  "A replicated AWSet" must {
     "converge under concurrent updates and write failures" in {
       val numUpdates = 100
 
@@ -122,14 +123,14 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
       probeC.expectMsg("started")
       probeD.expectMsg("started")
 
-      def singleUpdate(service: ORSetService[String])(implicit executionContext: ExecutionContext): Future[Unit] = {
+      def singleUpdate(service: AWSetService[String])(implicit executionContext: ExecutionContext): Future[Unit] = {
         Future.sequence(List(
           service.add(crdtId, randomNr()).recover { case _ => () },
           service.remove(crdtId, randomNr())
         )).map(_ => ())
       }
 
-      def batchUpdate(service: ORSetService[String]): Future[Unit] = {
+      def batchUpdate(service: AWSetService[String]): Future[Unit] = {
         import scala.concurrent.ExecutionContext.Implicits.global
         1.to(numUpdates).foldLeft(Future.successful(())) {
           case (acc, _) => acc.flatMap(_ => singleUpdate(service))

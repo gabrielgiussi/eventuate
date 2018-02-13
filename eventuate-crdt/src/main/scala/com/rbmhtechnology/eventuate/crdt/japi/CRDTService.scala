@@ -21,7 +21,8 @@ import java.util.concurrent.CompletionStage
 import com.rbmhtechnology.eventuate.SnapshotMetadata
 
 import scala.compat.java8.FutureConverters._
-import scala.concurrent.{ ExecutionContext, Future }
+import scala.concurrent.ExecutionContext
+import scala.concurrent.Future
 import scala.language.implicitConversions
 
 trait CRDTService[A, B, C] {
