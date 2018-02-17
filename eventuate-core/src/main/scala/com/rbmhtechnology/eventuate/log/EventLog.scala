@@ -16,14 +16,15 @@
 
 package com.rbmhtechnology.eventuate.log
 
-import java.util.concurrent.TimeUnit
-
 import akka.actor._
 import akka.dispatch.MessageDispatcher
 import akka.event.{ Logging, LoggingAdapter }
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.EventsourcingProtocol._
 import com.rbmhtechnology.eventuate.ReplicationProtocol._
+import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.ConnectedEndpoint
+import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.ConnectedPartition
+import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.EventLogMembership
 import com.rbmhtechnology.eventuate.log.StabilityChannel.SubscribeTCStable
 import com.rbmhtechnology.eventuate.log.StabilityChannel.UnsubscribeTCStable
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.MostRecentlyViewedTimestamps
@@ -359,12 +360,15 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
   protected def stabilityCheckerProps(partitions: Set[String]): Props = StabilityChecker.props(partitions)
 
   private val stabilityEnabled = context.system.settings.config.getSafeBoolean("eventuate.log.stability", true) // TODO default false
-  private val (stabilityChecker, stabilityChannel) = {
+  private val (stabilityChecker, stabilityChannel, membership) = {
     if (stabilityEnabled) {
+      // TODO error! eventuate.endpoint.connections is not required (podes definir los endpoints programaticamente)
+      val connections = context.system.settings.config.getSafeStringList("eventuate.endpoint.connections").fold(Try { context.system.settings.config.getInt("eventuate.endpoint.connections.size") }.getOrElse(0))(_.size) // TODO awful
+      val m = context.actorOf(Props(new EventLogMembershipActor(id, self, connections))) // TODO should be reinitiated if fails?
       val checker = context.system.settings.config.getSafeStringList("eventuate.log.stability.partitions").map(partitions => context.actorOf(stabilityCheckerProps(partitions), s"$id-stabilitychecker"))
-      val channel = Some(context.actorOf(Props[StabilityChannel], s"$id-stabilitychannel"))
-      (checker, channel)
-    } else (None, None)
+      val channel = context.actorOf(Props[StabilityChannel], s"$id-stabilitychannel")
+      (checker, Some(channel), Some(m))
+    } else (None, None, None)
   }
 
   /**
@@ -539,6 +543,18 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       registry = registry.unregisterSubscriber(subscriber)
     case r: ReplicaVersionVectors =>
       sendRTMUpdates(MostRecentlyViewedTimestamps(r.timestamps))
+    case p: ConnectedPartition => membership.foreach(_ ! p)
+    case p: ConnectedEndpoint  => membership.foreach(_ ! p) // TODO
+    case EventLogMembership(members) =>
+      processMembership(members)
+    // TODO options
+    // (a) create stabilityChecker(members) and send replicaVersionVectors
+    // (b) send Enable to stabilityChecker with the list of members.
+
+  }
+
+  def processMembership(members: Set[String]): Unit = {
+
   }
 
   def prepareReplicaVersionVectors(targetlogId: String) =

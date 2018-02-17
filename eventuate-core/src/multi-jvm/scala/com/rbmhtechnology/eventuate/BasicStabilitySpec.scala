@@ -32,19 +32,20 @@ class StabilitySpecConfig(providerConfig: Config) extends EventuateMultiNodeSpec
 
   val logName = "stabilityLog"
 
-  val nodeA = endpointNode("nodeA", Set("nodeB", "nodeC"))
-  val nodeB = endpointNode("nodeB", Set("nodeA"))
-  val nodeC = endpointNode("nodeC", Set("nodeA"))
+  val nodeA = endpointNode("nodeA", logName, Set("nodeB", "nodeC"))
+  val nodeB = endpointNode("nodeB", logName, Set("nodeA"))
+  val nodeC = endpointNode("nodeC", logName, Set("nodeA"))
 
   testTransport(on = true)
 
   val customConfig = ConfigFactory.parseString(
     s"""
        |akka.loglevel = ERROR
-       |eventuate.log.stability.partitions = [${Set(nodeA, nodeB, nodeC).map(_.partitionName).mkString(",")}]
+       |eventuate.log.stability.partitions = [${Set(nodeA, nodeB, nodeC).map(_.partitionName(logName)).mkString(",")}]
     """.stripMargin)
 
   setConfig(customConfig.withFallback(providerConfig))
+
 }
 
 object BasicStabilitySpec {
@@ -73,7 +74,7 @@ object BasicStabilitySpec {
 
     def expecting(tcs: TCStable): Receive = {
       case t: TCStable if t equiv tcs => probe ! "stable"
-      case t: TCStable                => ()
+      case _: TCStable                => ()
     }
   }
 
@@ -85,15 +86,17 @@ abstract class BasicStabilitySpec(config: StabilitySpecConfig) extends Eventuate
   import BasicStabilitySpec._
   import config._
 
+  override def logName: String = config.logName
+
   def initialParticipants: Int =
     roles.size
 
-  val expected = TCStable(VectorTime(nodeA.partitionName -> 4, nodeB.partitionName -> 3, nodeC.partitionName -> 0))
+  val expected = TCStable(VectorTime(nodeA.partitionName(logName).get -> 4, nodeB.partitionName(logName).get -> 3, nodeC.partitionName(logName).get -> 0))
 
   val initialize = (e: ReplicationEndpoint) => {
     val stableProbe = TestProbe()
     val subscribed = system.actorOf(Props(new TCStableActor(stableProbe.ref)), "stableActor")
-    val actor = system.actorOf(Props(new DummyActor("dummy", e.log)), "dummy")
+    val actor = system.actorOf(Props(new DummyActor(s"dummy-${e.id}", e.log)))
 
     e.log ! SubscribeTCStable(subscribed)
 

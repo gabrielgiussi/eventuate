@@ -29,6 +29,8 @@ import com.rbmhtechnology.eventuate.EndpointFilters.NoFilters
 import com.rbmhtechnology.eventuate.EventsourcingProtocol.{ Delete, DeleteFailure, DeleteSuccess }
 import com.rbmhtechnology.eventuate.ReplicationFilter.NoFilter
 import com.rbmhtechnology.eventuate.ReplicationProtocol.{ ReplicationEndpointInfo, _ }
+import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.ConnectedEndpoint
+import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.ConnectedPartition
 import com.typesafe.config.Config
 
 import scala.collection.JavaConverters._
@@ -434,6 +436,12 @@ class ReplicationEndpoint(
    */
   private[eventuate] def commonLogNames(endpointInfo: ReplicationEndpointInfo) =
     this.logNames.intersect(endpointInfo.logNames)
+
+  /**
+   * Returns all log names this endpoints has but `endpointInfo` has not.
+   */
+  private[eventuate] def uncommonLogNames(endpointInfo: ReplicationEndpointInfo) =
+    this.logNames.diff(endpointInfo.logNames)
 }
 
 /**
@@ -591,6 +599,7 @@ private class Connector(sourceConnector: SourceConnector, replicationLinks: Opti
   def receive = {
     case GetReplicationEndpointInfoSuccess(info) if !connected =>
       sourceConnector.links(info).foreach(createReplicator)
+      sourceConnector.targetEndpoint.uncommonLogNames(info).foreach(sourceConnector.targetEndpoint.logs(_) ! ConnectedEndpoint(info.endpointId))
       connected = true
       acceptorRequestSchedule.foreach(_.cancel())
   }
@@ -602,12 +611,18 @@ private class Connector(sourceConnector: SourceConnector, replicationLinks: Opti
 
   private def createReplicator(link: ReplicationLink): Unit = {
     context.actorOf(Props(new Replicator(link.target, link.source)))
+    link.target.log ! ConnectedPartition(link.source.endpointId, link.source.logId)
   }
 
   override def preStart(): Unit =
     replicationLinks match {
-      case Some(links) => links.foreach(createReplicator)
-      case None        => acceptorRequestSchedule = Some(scheduleAcceptorRequest(acceptor))
+      case Some(links) =>
+        // TODO duplicated code
+        // all the replicationsLink here are for the same endpoint?
+        // TODO THIS is used on recovery only, I can assure that this won't be needed?
+        sourceConnector.targetEndpoint.logNames.diff(links.map(_.source.logName)).foreach(sourceConnector.targetEndpoint.logs(_) ! ConnectedEndpoint(links.head.source.endpointId))
+        links.foreach(createReplicator)
+      case None => acceptorRequestSchedule = Some(scheduleAcceptorRequest(acceptor))
     }
 
   override def postStop(): Unit =

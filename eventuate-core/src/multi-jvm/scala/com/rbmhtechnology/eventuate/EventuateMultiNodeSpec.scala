@@ -19,41 +19,44 @@ package com.rbmhtechnology.eventuate
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.MultiNodeConfig
 import akka.remote.testkit.MultiNodeSpec
+import com.rbmhtechnology.eventuate.ReplicationProtocol.ReplicationEndpointInfo
+import com.typesafe.config.Config
 
-case class EventuateNodeTest(name: String, connections: Set[String], logName: String, val role: RoleName) {
+case class EventuateNodeTest(endpointId: String, connections: Set[String], logs: Set[String], val role: RoleName, customConfig: Option[Config] = None) {
 
-  private def logPartition(endpoint: String) = s"${endpoint}_${logName}"
-
-  val partitionName = logPartition(name)
-
-  def partitionName(connection: String) = logPartition(connection)
+  def partitionName(logName: String): Option[String] = if (logs.contains(logName)) Some(ReplicationEndpointInfo.logId(endpointId, logName)) else None
 
 }
 
 abstract class EventuateMultiNodeSpecConfig extends MultiNodeConfig {
 
-  def logName: String
+  def endpointNode(name: String, log: String, connections: Set[String], customConfig: Option[Config] = None) = EventuateNodeTest(name, connections, Set(log), role(name), customConfig)
 
-  def endpointNode(name: String, connections: Set[String]) = EventuateNodeTest(name, connections, logName, role(name))
+  def endpointNodeWithLogs(name: String, logs: Set[String], connections: Set[String], customConfig: Option[Config] = None) = EventuateNodeTest(name, connections, logs, role(name), customConfig)
+
+  def setNodesConfig(nodes: Set[EventuateNodeTest]) = nodes.foreach {
+    case EventuateNodeTest(_, _, _, roleName, Some(config)) => nodeConfig(roleName)(config)
+    case _ => ()
+  }
 
 }
 
 abstract class EventuateMultiNodeSpec(config: EventuateMultiNodeSpecConfig) extends MultiNodeSpec(config) with MultiNodeWordSpec with MultiNodeReplicationEndpoint {
 
-  override def logName: String = config.logName
-
   object Implicits {
+
+    import scala.language.implicitConversions
 
     implicit def toRole(e: EventuateNodeTest) = e.role
 
     implicit class EnhancedEventuateNodeTest(e: EventuateNodeTest) {
       private def _run(thunk: ReplicationEndpoint => Unit): Unit = {
-        val endpoint = createEndpoint(e.name, Set(e.logName), e.connections.map(c => node(RoleName(c)).address.toReplicationConnection))
+        val endpoint = createEndpoint(e.endpointId, e.logs, e.connections.map(c => node(RoleName(c)).address.toReplicationConnection))
         thunk(endpoint)
       }
 
       private def _runWith[T](thunk1: ReplicationEndpoint => T, thunk2: (ReplicationEndpoint, T) => Unit): Unit = {
-        val endpoint = createEndpoint(e.name, Set(e.logName), e.connections.map(c => node(RoleName(c)).address.toReplicationConnection))
+        val endpoint = createEndpoint(e.endpointId, e.logs, e.connections.map(c => node(RoleName(c)).address.toReplicationConnection))
         val t = thunk1(endpoint)
         thunk2(endpoint, t)
       }
