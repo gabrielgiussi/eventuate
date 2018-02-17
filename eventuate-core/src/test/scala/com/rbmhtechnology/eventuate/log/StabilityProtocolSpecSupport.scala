@@ -16,20 +16,30 @@
 
 package com.rbmhtechnology.eventuate.log
 
+import akka.actor.ActorRef
 import akka.actor.ActorSystem
+import akka.actor.Props
 import com.rbmhtechnology.eventuate.VectorTime
+import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.EventLogMembership
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.StableVT
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 
 object StabilityProtocolSpecSupport {
 
   trait ClusterAB {
+    def stabilityChecker()(implicit system: ActorSystem) = system.actorOf(Props[StabilityChecker])
+
     def A = "A"
     def B = "B"
     def partitions = Set(A, B)
     def vt(a: Long, b: Long) = VectorTime(A -> a, B -> b)
     def tcstable(a: Long, b: Long) = TCStable(vt(a, b))
     def initialRTM = partitions.map(_ -> VectorTime.Zero).toMap
-    def stabilityChecker()(implicit system: ActorSystem) = system.actorOf(StabilityChecker.props(partitions))
+
+    def askTCStable(st: ActorRef)(implicit sender: ActorRef) = {
+      st ! EventLogMembership(partitions)
+      st ! StableVT
+    }
   }
 
   trait ClusterABC extends ClusterAB {

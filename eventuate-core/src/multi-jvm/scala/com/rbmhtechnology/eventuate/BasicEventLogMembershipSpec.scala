@@ -21,6 +21,7 @@ import akka.actor.ActorRef
 import akka.actor.Props
 import akka.testkit.TestProbe
 import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.EventLogMembership
+import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.membershipAggregateId
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 
@@ -66,7 +67,7 @@ abstract class BasicEventLogMembershipSpec(config: BasicEventLogMembershipSpecCo
 
   class MembershipAwareActor(val id: String, val eventLog: ActorRef, probe: ActorRef) extends EventsourcedView {
 
-    override val aggregateId: Option[String] = Some("cluster-membership") // TODO duplicated
+    override val aggregateId: Option[String] = Some(membershipAggregateId)
 
     override def onCommand: Receive = Actor.emptyBehavior
 

@@ -27,6 +27,8 @@ import scala.util.Success
 
 object EventLogMembershipProtocol {
 
+  val membershipAggregateId = "cluster-membership"
+
   case class ActorRefContainer(a: ActorRef) // TODO
 
   // TODO me interesa saber quien soy yo?
@@ -93,7 +95,7 @@ class EventLogMembershipActor(val logId: String, val eventLog: ActorRef, connect
 
   import EventLogMembershipProtocol._
 
-  override val aggregateId: Option[String] = Some("cluster-membership") // THIS must contain the logName? (I think there is no replication between EvenLogso I should be fine)
+  override val aggregateId: Option[String] = Some(membershipAggregateId) // THIS must contain the logName? (I think there is no replication between EvenLogso I should be fine)
 
   override def id: String = s"cluster-membership-$logId"
 

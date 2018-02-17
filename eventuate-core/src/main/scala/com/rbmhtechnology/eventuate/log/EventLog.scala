@@ -357,7 +357,7 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
     }.recover { case _ => default }.get
   }
 
-  protected def stabilityCheckerProps(partitions: Set[String]): Props = StabilityChecker.props(partitions)
+  //protected def stabilityCheckerProps(partitions: Set[String]): Props = ??? //StabilityChecker.props(partitions)
 
   private val stabilityEnabled = context.system.settings.config.getSafeBoolean("eventuate.log.stability", true) // TODO default false
   private val (stabilityChecker, stabilityChannel, membership) = {
@@ -365,7 +365,7 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       // TODO error! eventuate.endpoint.connections is not required (podes definir los endpoints programaticamente)
       val connections = context.system.settings.config.getSafeStringList("eventuate.endpoint.connections").fold(Try { context.system.settings.config.getInt("eventuate.endpoint.connections.size") }.getOrElse(0))(_.size) // TODO awful
       val m = context.actorOf(Props(new EventLogMembershipActor(id, self, connections))) // TODO should be reinitiated if fails?
-      val checker = context.system.settings.config.getSafeStringList("eventuate.log.stability.partitions").map(partitions => context.actorOf(stabilityCheckerProps(partitions), s"$id-stabilitychecker"))
+      val checker = context.system.settings.config.getSafeStringList("eventuate.log.stability.partitions").map(partitions => context.actorOf(Props[StabilityChecker], s"$id-stabilitychecker"))
       val channel = context.actorOf(Props[StabilityChannel], s"$id-stabilitychannel")
       (checker, Some(channel), Some(m))
     } else (None, None, None)
@@ -543,13 +543,9 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       registry = registry.unregisterSubscriber(subscriber)
     case r: ReplicaVersionVectors =>
       sendRTMUpdates(MostRecentlyViewedTimestamps(r.timestamps))
-    case p: ConnectedPartition => membership.foreach(_ ! p)
-    case p: ConnectedEndpoint  => membership.foreach(_ ! p) // TODO
-    case EventLogMembership(members) =>
-      processMembership(members)
-    // TODO options
-    // (a) create stabilityChecker(members) and send replicaVersionVectors
-    // (b) send Enable to stabilityChecker with the list of members.
+    case p: ConnectedPartition       => membership.foreach(_ ! p)
+    case p: ConnectedEndpoint        => membership.foreach(_ ! p) // TODO
+    case e:EventLogMembership => stabilityChecker.foreach(_ ! e)
 
   }
 
