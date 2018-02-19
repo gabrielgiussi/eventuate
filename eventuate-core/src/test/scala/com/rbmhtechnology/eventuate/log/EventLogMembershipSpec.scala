@@ -35,10 +35,6 @@ class EventLogMembershipSpec extends WordSpec with Matchers {
 
   import scala.language.implicitConversions
 
-  implicit def asInitialPartition(unconnected: UnconnectedPartition) = InitialPartitions(unconnected.logId, unconnected.neighbors)
-
-  // TODO this test doesn't capture the initial communication of endpoints that may or not be part of the eventlog
-
   "Event Log" must {
     "solve membership when there are no more unknown partitions" in {
       val state0 = EventLogMembershipState(partitionA)

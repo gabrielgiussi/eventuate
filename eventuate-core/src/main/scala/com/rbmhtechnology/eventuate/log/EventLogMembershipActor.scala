@@ -29,8 +29,6 @@ object EventLogMembershipProtocol {
 
   val membershipAggregateId = "cluster-membership"
 
-  case class InitialPartitions(id: String, partitions: Set[String])
-
   object ConnectedEndpoint {
     def apply(endpointId: String, logId: String): ConnectedEndpoint = ConnectedEndpoint(endpointId, Some(logId))
 
@@ -39,12 +37,12 @@ object EventLogMembershipProtocol {
 
   case class ConnectedEndpoint(endpointId: String, logId: Option[String])
 
-  case class UnconnectedPartition(logId: String, neighbors: Set[String])
+  case class UnconnectedPartition(logId: String, partitions: Set[String])
 
   case class EventLogMembership(partitions: Set[String])
 
   object EventLogMembershipState {
-    def apply(p: InitialPartitions): EventLogMembershipState = EventLogMembershipState(Set(p.id), p.partitions, Set.empty)
+    def apply(p: UnconnectedPartition): EventLogMembershipState = EventLogMembershipState(Set(p.logId), p.partitions, Set.empty)
   }
 
   case class EventLogMembershipState(known: Set[String], unknown: Set[String], pending: Set[UnconnectedPartition]) {
@@ -53,7 +51,7 @@ object EventLogMembershipProtocol {
     final def processPartition(newPartition: UnconnectedPartition): EventLogMembershipState = {
       if (unknown.contains(newPartition.logId)) {
         val _known = known + newPartition.logId
-        val _unknown = unknown - newPartition.logId ++ newPartition.neighbors.filterNot(known.contains)
+        val _unknown = unknown - newPartition.logId ++ newPartition.partitions.filterNot(known.contains)
         val partial = copy(_known, _unknown)
 
         partial.pending.find(p => partial.unknown.contains(p.logId)) match {
@@ -86,10 +84,6 @@ class EventLogMembershipActor(val logId: String, val eventLog: ActorRef, connect
   // TODO improve
   def checkInitial(connected: Set[String]) = {
     if (connected.size equals connectedEndpoints) {
-      persist(InitialPartitions(logId, initialPartitions)) {
-        case Success(_) => ()
-        case Failure(_) => // TODO notice EventLog ?
-      }
       persist(UnconnectedPartition(logId, initialPartitions)) {
         case Success(_) => ()
         case Failure(_) => // TODO notice EventLog ?
@@ -108,8 +102,8 @@ class EventLogMembershipActor(val logId: String, val eventLog: ActorRef, connect
   override def onCommand: Receive = receivingInitialPartitions(Set.empty[String])
 
   def waitingInitialPartitions: Receive = {
-    case i: InitialPartitions if (i.id eq logId) =>
-      val initialState = EventLogMembershipState(i)
+    case u: UnconnectedPartition if u.logId eq logId => // TODO is really needed to stash?
+      val initialState = EventLogMembershipState(u)
       val _state = stashed.foldLeft(initialState)(_ processPartition _)
       stashed = Set.empty
       state = Some(_state)
