@@ -29,39 +29,32 @@ object EventLogMembershipProtocol {
 
   val membershipAggregateId = "cluster-membership"
 
-  case class ActorRefContainer(a: ActorRef) // TODO
-
-  // TODO me interesa saber quien soy yo?
   case class InitialPartitions(id: String, partitions: Set[String])
 
-  case class InitialState(state: EventLogMembershipState)
+  object ConnectedEndpoint {
+    def apply(endpointId: String, logId: String): ConnectedEndpoint = ConnectedEndpoint(endpointId, Some(logId))
 
-  case class ConnectedEndpoint(endpoingId: String) // doesn't share the eventLog
+    def apply(endpointId: String): ConnectedEndpoint = ConnectedEndpoint(endpointId, None)
+  }
 
-  case class ConnectedPartition(endpointId: String, logId: String)
+  case class ConnectedEndpoint(endpointId: String, logId: Option[String])
 
   case class UnconnectedPartition(logId: String, neighbors: Set[String])
 
   case class EventLogMembership(partitions: Set[String])
 
-  case class PartialPartitions()
-
-  case class GossipPartition(partition: UnconnectedPartition)
-
   object EventLogMembershipState {
-    def apply(p: InitialPartitions): EventLogMembershipState = EventLogMembershipState(p.partitions + p.id, Set(p.id), p.partitions, Set.empty)
+    def apply(p: InitialPartitions): EventLogMembershipState = EventLogMembershipState(Set(p.id), p.partitions, Set.empty)
   }
 
-  // TODO I think members is not needed, I could use known
-  case class EventLogMembershipState(members: Set[String], known: Set[String], unknown: Set[String], pending: Set[UnconnectedPartition]) {
+  case class EventLogMembershipState(known: Set[String], unknown: Set[String], pending: Set[UnconnectedPartition]) {
 
     @tailrec
     final def processPartition(newPartition: UnconnectedPartition): EventLogMembershipState = {
       if (unknown.contains(newPartition.logId)) {
-        val _members = members ++ (newPartition.neighbors + newPartition.logId)
         val _known = known + newPartition.logId
         val _unknown = unknown - newPartition.logId ++ newPartition.neighbors.filterNot(known.contains)
-        val partial = copy(_members, _known, _unknown)
+        val partial = copy(_known, _unknown)
 
         partial.pending.find(p => partial.unknown.contains(p.logId)) match {
           case Some(p) => partial.copy(pending = partial.pending - p).processPartition(p)
@@ -72,65 +65,47 @@ object EventLogMembershipProtocol {
     }
   }
 
-  @tailrec
-  def processPartition(state: EventLogMembershipState)(newPartition: UnconnectedPartition): EventLogMembershipState = {
-    if (state.unknown.contains(newPartition.logId)) {
-      val members = state.members ++ (newPartition.neighbors + newPartition.logId)
-      val known = state.known + newPartition.logId
-      val unknown = state.unknown - newPartition.logId ++ newPartition.neighbors.filterNot(known.contains)
-      val partial = state.copy(members, known, unknown)
-
-      partial.pending.find(p => partial.unknown.contains(p.logId)) match {
-        case Some(pending) => processPartition(partial.copy(pending = partial.pending - pending))(pending)
-        case None          => partial
-      }
-    } else
-      state.copy(pending = state.pending + newPartition)
-  }
-
 }
 
-// Note that if there are any changes to the partitions, won't be reflected here
+// TODO Note that if there are any changes to the partitions, won't be reflected here
 class EventLogMembershipActor(val logId: String, val eventLog: ActorRef, connectedEndpoints: Int) extends EventsourcedActor with PersistOnEvent {
 
   import EventLogMembershipProtocol._
 
-  override val aggregateId: Option[String] = Some(membershipAggregateId) // THIS must contain the logName? (I think there is no replication between EvenLogso I should be fine)
+  override val aggregateId: Option[String] = Some(membershipAggregateId)
 
   override def id: String = s"cluster-membership-$logId"
 
   var state: Option[EventLogMembershipState] = None
-
-  var connected = Set.empty[String]
 
   var initialPartitions = Set.empty[String]
 
   // TODO Why I can't stash events?
   var stashed = Set.empty[UnconnectedPartition]
 
-  def checkInitial() = {
+  // TODO improve
+  def checkInitial(connected: Set[String]) = {
     if (connected.size equals connectedEndpoints) {
       persist(InitialPartitions(logId, initialPartitions)) {
         case Success(_) => ()
         case Failure(_) => // TODO notice EventLog ?
       }
-      persist(GossipPartition(UnconnectedPartition(logId, initialPartitions))) {
+      persist(UnconnectedPartition(logId, initialPartitions)) {
         case Success(_) => ()
         case Failure(_) => // TODO notice EventLog ?
       }
       commandContext.become(Actor.emptyBehavior)
     }
   }
-  override def onCommand: Receive = {
-    // TODO this won't be needed when is restarted (event replication)
-    case ConnectedEndpoint(endpointId) =>
-      connected += endpointId
-      checkInitial()
-    case ConnectedPartition(endpointId, remoteLogId) =>
-      connected += endpointId
-      initialPartitions += remoteLogId
-      checkInitial()
+
+  def receivingInitialPartitions(connected: Set[String]): Receive = {
+    case ConnectedEndpoint(endpointId, remoteLogId) =>
+      commandContext.become(receivingInitialPartitions(connected + endpointId))
+      remoteLogId.foreach(initialPartitions += _)
+      checkInitial(connected + endpointId)
   }
+
+  override def onCommand: Receive = receivingInitialPartitions(Set.empty[String])
 
   def waitingInitialPartitions: Receive = {
     case i: InitialPartitions if (i.id eq logId) =>
@@ -143,10 +118,10 @@ class EventLogMembershipActor(val logId: String, val eventLog: ActorRef, connect
   }
 
   def waitingUnconnectedPartitions: Receive = {
-    case GossipPartition(p) if (p.logId ne logId) =>
+    case p: UnconnectedPartition if (p.logId ne logId) =>
       state = state.map(_.processPartition(p))
       state.foreach {
-        case EventLogMembershipState(members, _, unknown, _) if unknown.isEmpty =>
+        case EventLogMembershipState(members, unknown, _) if unknown.isEmpty =>
           persistOnEvent(EventLogMembership(members))
           eventLog ! EventLogMembership(members) // or onEvent?
         case _ => ()

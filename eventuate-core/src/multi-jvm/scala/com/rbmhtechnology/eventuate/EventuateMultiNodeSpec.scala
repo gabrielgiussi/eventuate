@@ -50,20 +50,20 @@ abstract class EventuateMultiNodeSpec(config: EventuateMultiNodeSpecConfig) exte
     implicit def toRole(e: EventuateNodeTest) = e.role
 
     implicit class EnhancedEventuateNodeTest(e: EventuateNodeTest) {
-      private def _run(thunk: ReplicationEndpoint => Unit): Unit = {
-        val endpoint = createEndpoint(e.endpointId, e.logs, e.connections.map(c => node(RoleName(c)).address.toReplicationConnection))
-        thunk(endpoint)
-      }
+      private def _createEndpoint(activate: Boolean): ReplicationEndpoint = createEndpoint(e.endpointId, e.logs, e.connections.map(c => node(RoleName(c)).address.toReplicationConnection), activate)
 
-      private def _runWith[T](thunk1: ReplicationEndpoint => T, thunk2: (ReplicationEndpoint, T) => Unit): Unit = {
-        val endpoint = createEndpoint(e.endpointId, e.logs, e.connections.map(c => node(RoleName(c)).address.toReplicationConnection))
+      private def _run(thunk: ReplicationEndpoint => Unit, activate: Boolean): Unit =
+        thunk(_createEndpoint(activate))
+
+      private def _runWith[T](thunk1: ReplicationEndpoint => T, thunk2: (ReplicationEndpoint, T) => Unit, activate: Boolean): Unit = {
+        val endpoint = _createEndpoint(activate)
         val t = thunk1(endpoint)
         thunk2(endpoint, t)
       }
 
-      def run(thunk: ReplicationEndpoint => Unit) = runOn(e.role)(_run(thunk))
+      def run(thunk: ReplicationEndpoint => Unit, activate: Boolean = true) = runOn(e.role)(_run(thunk, activate))
 
-      def runWith[T](thunk1: ReplicationEndpoint => T)(thunk2: (ReplicationEndpoint, T) => Unit) = runOn(e.role)(_runWith(thunk1, thunk2))
+      def runWith[T](thunk1: ReplicationEndpoint => T, activate: Boolean = true)(thunk2: (ReplicationEndpoint, T) => Unit) = runOn(e.role)(_runWith(thunk1, thunk2, activate))
 
     }
 

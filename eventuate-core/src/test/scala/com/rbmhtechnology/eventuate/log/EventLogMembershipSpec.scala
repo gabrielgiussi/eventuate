@@ -33,28 +33,42 @@ class EventLogMembershipSpec extends WordSpec with Matchers {
   val partitionC = UnconnectedPartition("C", Set("A", "D"))
   val partitionD = UnconnectedPartition("D", Set("C"))
 
+  import scala.language.implicitConversions
+
   implicit def asInitialPartition(unconnected: UnconnectedPartition) = InitialPartitions(unconnected.logId, unconnected.neighbors)
 
-  "a" must {
-    "b" in {
+  // TODO this test doesn't capture the initial communication of endpoints that may or not be part of the eventlog
+
+  "Event Log" must {
+    "solve membership when there are no more unknown partitions" in {
       val state0 = EventLogMembershipState(partitionA)
-      state0 should be(EventLogMembershipState(Set("A", "B", "C"), Set("A"), Set("B", "C"), Set()))
-      val state1 = processPartition(state0)(partitionB)
-      state1 should be(EventLogMembershipState(Set("A", "B", "C"), Set("A", "B"), Set("C"), Set()))
-      val state2 = processPartition(state1)(partitionC)
-      state2 should be(EventLogMembershipState(Set("A", "B", "C", "D"), Set("A", "B", "C"), Set("D"), Set()))
-      val state3 = processPartition(state2)(partitionD)
-      state3 should be(EventLogMembershipState(Set("A", "B", "C", "D"), Set("A", "B", "C", "D"), Set(), Set()))
+      state0 should be(EventLogMembershipState(Set("A"), Set("B", "C"), Set()))
+      val state1 = state0.processPartition(partitionB)
+      state1 should be(EventLogMembershipState(Set("A", "B"), Set("C"), Set()))
+      val state2 = state1.processPartition(partitionC)
+      state2 should be(EventLogMembershipState(Set("A", "B", "C"), Set("D"), Set()))
+      val state3 = state2.processPartition(partitionD)
+      state3 should be(EventLogMembershipState(Set("A", "B", "C", "D"), Set(), Set()))
     }
-    "c" in {
+    "solve membership if receives an unexpected partition" in {
       val state0 = EventLogMembershipState(partitionA)
-      state0 should be(EventLogMembershipState(Set("A", "B", "C"), Set("A"), Set("B", "C"), Set()))
-      val state1 = processPartition(state0)(partitionB)
-      state1 should be(EventLogMembershipState(Set("A", "B", "C"), Set("A", "B"), Set("C"), Set()))
-      val state2 = processPartition(state1)(partitionD)
-      state2 should be(EventLogMembershipState(Set("A", "B", "C"), Set("A", "B"), Set("C"), Set(UnconnectedPartition("D", Set("C")))))
-      val state3 = processPartition(state2)(partitionC)
-      state3 should be(EventLogMembershipState(Set("A", "B", "C", "D"), Set("A", "B", "C", "D"), Set(), Set()))
+      state0 should be(EventLogMembershipState(Set("A"), Set("B", "C"), Set()))
+      val state1 = state0.processPartition(partitionB)
+      state1 should be(EventLogMembershipState(Set("A", "B"), Set("C"), Set()))
+      val state2 = state1.processPartition(partitionD)
+      state2 should be(EventLogMembershipState(Set("A", "B"), Set("C"), Set(UnconnectedPartition("D", Set("C")))))
+      val state3 = state2.processPartition(partitionC)
+      state3 should be(EventLogMembershipState(Set("A", "B", "C", "D"), Set(), Set()))
+    }
+    "solve membership if receives two unexpected partitions" in {
+      val state0 = EventLogMembershipState(partitionB)
+      state0 should be(EventLogMembershipState(Set("B"), Set("A"), Set()))
+      val state1 = state0.processPartition(partitionD)
+      state1 should be(EventLogMembershipState(Set("B"), Set("A"), Set(UnconnectedPartition("D", Set("C")))))
+      val state2 = state1.processPartition(partitionC)
+      state2 should be(EventLogMembershipState(Set("B"), Set("A"), Set(UnconnectedPartition("D", Set("C")), UnconnectedPartition("C", Set("A", "D")))))
+      val state3 = state2.processPartition(partitionA)
+      state3 should be(EventLogMembershipState(Set("A", "B", "C", "D"), Set(), Set()))
     }
   }
 }

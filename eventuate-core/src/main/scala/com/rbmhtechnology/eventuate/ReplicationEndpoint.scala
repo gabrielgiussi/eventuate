@@ -30,7 +30,6 @@ import com.rbmhtechnology.eventuate.EventsourcingProtocol.{ Delete, DeleteFailur
 import com.rbmhtechnology.eventuate.ReplicationFilter.NoFilter
 import com.rbmhtechnology.eventuate.ReplicationProtocol.{ ReplicationEndpointInfo, _ }
 import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.ConnectedEndpoint
-import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.ConnectedPartition
 import com.typesafe.config.Config
 
 import scala.collection.JavaConverters._
@@ -611,7 +610,7 @@ private class Connector(sourceConnector: SourceConnector, replicationLinks: Opti
 
   private def createReplicator(link: ReplicationLink): Unit = {
     context.actorOf(Props(new Replicator(link.target, link.source)))
-    link.target.log ! ConnectedPartition(link.source.endpointId, link.source.logId)
+    link.target.log ! ConnectedEndpoint(link.source.endpointId, link.source.logId)
   }
 
   override def preStart(): Unit =
@@ -694,7 +693,7 @@ private class Replicator(target: ReplicationTarget, source: ReplicationSource) e
   override def unhandled(message: Any): Unit = message match {
     case ReplicationDue => // currently replicating, ignore
     case r: ReplicaVersionVectors =>
-      log.error("WACHOOOOO {}", r.timestamps)
+      log.error("WACHOOOOO {}", r.timestamps) // TODO
       target.log ! r
     case other => super.unhandled(message)
   }

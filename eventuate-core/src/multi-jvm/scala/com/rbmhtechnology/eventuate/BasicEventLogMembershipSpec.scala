@@ -19,6 +19,7 @@ package com.rbmhtechnology.eventuate
 import akka.actor.Actor
 import akka.actor.ActorRef
 import akka.actor.Props
+import akka.remote.transport.ThrottlerTransportAdapter.Direction
 import akka.testkit.TestProbe
 import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.EventLogMembership
 import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.membershipAggregateId
@@ -45,12 +46,14 @@ class BasicEventLogMembershipSpecConfig(providerConfig: Config) extends Eventuat
 
   def partitions(logName: String): Set[String] = nodes.flatMap(_.partitionName(logName))
 
+  // TODO
   def customConfig(connections: Int) = Some(ConfigFactory.parseString(s"eventuate.endpoint.connections.size = $connections"))
 
   val nodes = Set(nodeA, nodeB, nodeC, nodeD)
   val log1Partitions: Set[String] = partitions(log1)
   val log2Partitions: Set[String] = partitions(log2)
 
+  testTransport(on = true)
   setConfig(providerConfig)
   setNodesConfig(nodes)
 
@@ -66,8 +69,6 @@ abstract class BasicEventLogMembershipSpec(config: BasicEventLogMembershipSpecCo
   override def logName: String = throw new UnsupportedOperationException
 
   class MembershipAwareActor(val id: String, val eventLog: ActorRef, probe: ActorRef) extends EventsourcedView {
-
-    override val aggregateId: Option[String] = Some(membershipAggregateId)
 
     override def onCommand: Receive = Actor.emptyBehavior
 
@@ -88,29 +89,72 @@ abstract class BasicEventLogMembershipSpec(config: BasicEventLogMembershipSpecCo
   }
 
   "Event log membership" must {
+
     "reach agreement" in {
-
-      nodeA.runWith(initialize) { (_, memberships) =>
+      nodeA.runWith(initialize, false) { (endpoint, memberships) =>
+        testConductor.blackhole(nodeA, nodeC, Direction.Both).await
+        testConductor.blackhole(nodeC, nodeD, Direction.Both).await
+        enterBarrier("startup")
+        endpoint.activate()
         val membershipLog1 = memberships(log1)
         val membershipLog2 = memberships(log2)
-        membershipLog1.expectMsg(log1Partitions)
+
+        membershipLog1.expectNoMsg()
+        membershipLog2.expectNoMsg()
+
+        testConductor.passThrough(nodeA, nodeC, Direction.Both).await
+        enterBarrier("healedAC")
+
         membershipLog2.expectMsg(log2Partitions)
+        membershipLog1.expectNoMsg()
+
+        testConductor.passThrough(nodeC, nodeD, Direction.Both).await
+        enterBarrier("healedCD")
+        membershipLog1.expectMsg(log1Partitions)
       }
 
-      nodeB.runWith(initialize) { (_, memberships) =>
+      nodeB.runWith(initialize, false) { (endpoint, memberships) =>
+        enterBarrier("startup")
+        endpoint.activate()
         val membershipLog1 = memberships(log1)
         val membershipLog2 = memberships(log2)
-        membershipLog1.expectMsg(log1Partitions)
+
+        membershipLog1.expectNoMsg()
+        membershipLog2.expectNoMsg()
+        enterBarrier("healedAC")
+
         membershipLog2.expectMsg(log2Partitions)
-      }
+        membershipLog1.expectNoMsg()
 
-      nodeC.runWith(initialize) { (_, memberships) =>
-        val membershipLog1 = memberships(log1)
+        enterBarrier("healedCD")
         membershipLog1.expectMsg(log1Partitions)
       }
 
-      nodeD.runWith(initialize) { (_, memberships) =>
+      nodeC.runWith(initialize, false) { (endpoint, memberships) =>
+        enterBarrier("startup")
+        endpoint.activate()
         val membershipLog1 = memberships(log1)
+
+        membershipLog1.expectNoMsg()
+        enterBarrier("healedAC")
+
+        membershipLog1.expectNoMsg()
+        enterBarrier("healedCD")
+
+        membershipLog1.expectMsg(log1Partitions)
+      }
+
+      nodeD.runWith(initialize, false) { (endpoint, memberships) =>
+        enterBarrier("startup")
+        endpoint.activate()
+        val membershipLog1 = memberships(log1)
+
+        membershipLog1.expectNoMsg()
+        enterBarrier("healedAC")
+
+        membershipLog1.expectNoMsg()
+        enterBarrier("healedCD")
+
         membershipLog1.expectMsg(log1Partitions)
       }
 

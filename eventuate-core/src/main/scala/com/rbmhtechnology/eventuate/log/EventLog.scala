@@ -23,7 +23,6 @@ import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.EventsourcingProtocol._
 import com.rbmhtechnology.eventuate.ReplicationProtocol._
 import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.ConnectedEndpoint
-import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.ConnectedPartition
 import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.EventLogMembership
 import com.rbmhtechnology.eventuate.log.StabilityChannel.SubscribeTCStable
 import com.rbmhtechnology.eventuate.log.StabilityChannel.UnsubscribeTCStable
@@ -543,9 +542,8 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       registry = registry.unregisterSubscriber(subscriber)
     case r: ReplicaVersionVectors =>
       sendRTMUpdates(MostRecentlyViewedTimestamps(r.timestamps))
-    case p: ConnectedPartition       => membership.foreach(_ ! p)
-    case p: ConnectedEndpoint        => membership.foreach(_ ! p) // TODO
-    case e:EventLogMembership => stabilityChecker.foreach(_ ! e)
+    case p: ConnectedEndpoint  => membership.foreach(_ ! p)
+    case e: EventLogMembership => stabilityChecker.foreach(_ ! e)
 
   }
 
