@@ -107,6 +107,7 @@ class EventLogMembershipActor(val logId: String, val eventLog: ActorRef, connect
       val _state = stashed.foldLeft(initialState)(_ processPartition _)
       stashed = Set.empty
       state = Some(_state)
+      checkAgreement()
       eventContext.become(waitingUnconnectedPartitions)
     case u: UnconnectedPartition => stashed += u
   }
@@ -114,12 +115,16 @@ class EventLogMembershipActor(val logId: String, val eventLog: ActorRef, connect
   def waitingUnconnectedPartitions: Receive = {
     case p: UnconnectedPartition if (p.logId ne logId) =>
       state = state.map(_.processPartition(p))
-      state.foreach {
-        case EventLogMembershipState(members, unknown, _) if unknown.isEmpty =>
-          persistOnEvent(EventLogMembership(members))
-          eventLog ! EventLogMembership(members) // or onEvent?
-        case _ => ()
-      }
+      checkAgreement()
+  }
+
+  def checkAgreement() = {
+    state.foreach {
+      case EventLogMembershipState(members, unknown, _) if unknown.isEmpty =>
+        persistOnEvent(EventLogMembership(members))
+        eventLog ! EventLogMembership(members) // or onEvent?
+      case _ => ()
+    }
   }
 
   override def onEvent: Receive = waitingInitialPartitions
