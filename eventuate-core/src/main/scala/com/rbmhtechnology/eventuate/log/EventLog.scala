@@ -359,6 +359,7 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
   //protected def stabilityCheckerProps(partitions: Set[String]): Props = ??? //StabilityChecker.props(partitions)
 
   private val stabilityEnabled = context.system.settings.config.getSafeBoolean("eventuate.log.stability", true) // TODO default false
+  /*
   private val (stabilityChecker, stabilityChannel, membership) = {
     if (stabilityEnabled) {
       // TODO error! eventuate.endpoint.connections is not required (podes definir los endpoints programaticamente)
@@ -369,6 +370,11 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       (checker, Some(channel), Some(m))
     } else (None, None, None)
   }
+  */
+
+  val stabilityChecker: Option[ActorRef] = None
+  val stabilityChannel: Option[ActorRef] = None
+  val membership: Option[ActorRef] = None
 
   /**
    * This event log's logging adapter.

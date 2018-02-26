@@ -23,7 +23,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
-import com.rbmhtechnology.eventuate.log.StabilityChannel.SubscribeTCStable
+import com.rbmhtechnology.eventuate.crdt.TCSBActor.SubscribeTCStable
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 import com.typesafe.config.Config
 
@@ -117,6 +117,8 @@ trait CRDTService[A, B] {
 
   private var manager: Option[ActorRef] = None
 
+  private var stability: Option[ActorRef] = None
+
   private lazy val settings: CRDTServiceSettings =
     new CRDTServiceSettings(system.settings.config)
 
@@ -172,16 +174,17 @@ trait CRDTService[A, B] {
     w.ask(Save(id)).mapTo[SaveReply].map(_.metadata)(d)
   }
 
-  /**
-   * Updates the CRDT identified by `id` with given `operation`.
-   * Returns the updated value of the CRDT.
-   */
-  def stable(id: String, t: VectorTime): Future[String] = withManagerAndDispatcher { (w, d) =>
-    w.ask(MarkStable(id, t)).mapTo[MarkStableReply].map(_.id)(d)
+  def activateStability(): Unit = {
+    import scala.collection.JavaConverters._
+    // TODO Should handle exceptions in case config doesn't exists?
+    val localPartition = system.settings.config.getString(s"eventuate.crdt.stability.$serviceId.local-partition")
+    val partitions = system.settings.config.getStringList(s"eventuate.crdt.stability.$serviceId.partitions")
+    activateStability(localPartition, partitions.asScala.toSet)
   }
 
-  def timestamps(id: String): Future[Set[VectorTime]] = withManagerAndDispatcher { (w, d) =>
-    w.ask(GetTimestamps(id)).mapTo[GetTimestampsReply].map(_.timestamps)(d)
+  def activateStability(localPartition: String, partitions: Set[String]): Unit = {
+    if (ops.subscribeToStable)
+      stability = Some(system.actorOf(TCSBActor.props(serviceId, log, localPartition, partitions), s"tcsb-$serviceId"))
   }
 
   protected def op(id: String, operation: Operation): Future[B] = withManagerAndDispatcher { (w, d) =>
@@ -209,15 +212,9 @@ trait CRDTService[A, B] {
 
   private case class SaveReply(id: String, metadata: SnapshotMetadata) extends Identified
 
-  private case class MarkStable(id: String, timestamp: VectorTime) extends Identified
+  private case class OnChange(crdt: A, operation: Option[Operation], vt: Option[VectorTime] = None)
 
-  private case class MarkStableReply(id: String) extends Identified
-
-  private case class GetTimestamps(id: String) extends Identified
-
-  case class GetTimestampsReply(timestamps: Set[VectorTime])
-
-  private case class OnChange(crdt: A, operation: Option[Operation])
+  private case class OnStable(crdt: A, stable: TCStable)
 
   private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor {
     override val id =
@@ -229,7 +226,7 @@ trait CRDTService[A, B] {
     var crdt: A =
       ops.zero
 
-    if (ops.subscribeToStable) eventLog ! SubscribeTCStable(self)
+    if (ops.subscribeToStable) stability.foreach(_ ! SubscribeTCStable(self))
 
     override def stateSync: Boolean = ops.precondition
 
@@ -259,13 +256,14 @@ trait CRDTService[A, B] {
         }
       case s: TCStable =>
         crdt = ops.stable(crdt, s)
-        onStable(crdt, s)
+        context.parent ! OnStable(crdt, s)
     }
 
     override def onEvent = {
       case evt @ ValueUpdated(operation) =>
-        crdt = ops.effect(crdt, operation, lastHandledEvent.vectorTimestamp, lastHandledEvent.systemTimestamp, lastHandledEvent.emitterId)
-        context.parent ! OnChange(crdt, Some(operation))
+        crdt = ops.effect(crdt, operation, lastVectorTimestamp, lastSystemTimestamp, lastEmitterId)
+        // update RTM
+        context.parent ! OnChange(crdt, Some(operation), Some(lastVectorTimestamp))
     }
 
     override def onSnapshot = {
@@ -282,8 +280,10 @@ trait CRDTService[A, B] {
     def receive = {
       case cmd: Identified =>
         crdtActor(cmd.id) forward cmd
-      case n @ OnChange(crdt, operation) =>
-        onChange(crdt, operation)
+      case n @ OnChange(crdt, operation, vt) =>
+        onChange(crdt, operation, vt)
+      case s @ OnStable(crdt, stable) =>
+        onStable(crdt, stable)
       case Terminated(crdt) =>
         crdts.find(pair => pair._2 == crdt).map(_._1).foreach { id =>
           crdts = crdts - id
@@ -301,7 +301,7 @@ trait CRDTService[A, B] {
   }
 
   /** For testing purposes only */
-  private[crdt] def onChange(crdt: A, operation: Option[Operation]): Unit = ()
+  private[crdt] def onChange(crdt: A, operation: Option[Operation], vt: Option[VectorTime]): Unit = ()
 
   private[crdt] def onStable(crdt: A, stable: TCStable): Unit = ()
 }

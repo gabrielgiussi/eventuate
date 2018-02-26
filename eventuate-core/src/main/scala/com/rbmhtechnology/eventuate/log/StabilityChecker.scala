@@ -18,16 +18,23 @@ package com.rbmhtechnology.eventuate.log
 
 import akka.actor.Actor
 import akka.actor.ActorLogging
+import akka.actor.Props
 import com.rbmhtechnology.eventuate.VectorTime
-import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.EventLogMembership
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.MostRecentlyViewedTimestamps
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.RTM
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.StableVT
 
-class StabilityChecker extends Actor with ActorLogging {
+object StabilityChecker {
 
-  var recentTimestampsMatrix: RTM = Map.empty[String, VectorTime]
+  def props(partitions: Set[String]) = Props(new StabilityChecker(partitions)) // TODO add partitions
+}
 
+// TODO remove default empty set
+class StabilityChecker(partitions: Set[String] = Set.empty) extends Actor with ActorLogging {
+
+  var recentTimestampsMatrix: RTM = partitions.map(_ -> VectorTime.Zero).toMap
+
+  /*
   def receiveUpdates: Receive = {
     case MostRecentlyViewedTimestamps(timestamps) =>
       recentTimestampsMatrix = StabilityProtocol.updateRTM(recentTimestampsMatrix)(timestamps)
@@ -42,6 +49,14 @@ class StabilityChecker extends Actor with ActorLogging {
     case EventLogMembership(members) =>
       recentTimestampsMatrix = StabilityProtocol.updateRTM(recentTimestampsMatrix)(members.map(_ -> VectorTime.Zero).toMap)
       context.become(receiveUpdates orElse emitting)
+  }
+  */
+
+  override def receive: Receive = {
+    case StableVT =>
+      sender() ! StabilityProtocol.stableVectorTime(recentTimestampsMatrix.values.toSeq)
+    case MostRecentlyViewedTimestamps(timestamps) =>
+      recentTimestampsMatrix = StabilityProtocol.updateRTM(recentTimestampsMatrix)(timestamps)
   }
 
 }
