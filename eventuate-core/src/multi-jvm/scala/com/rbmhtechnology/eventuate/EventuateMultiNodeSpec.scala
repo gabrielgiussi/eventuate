@@ -34,10 +34,7 @@ abstract class EventuateMultiNodeSpecConfig extends MultiNodeConfig {
 
   def endpointNodeWithLogs(name: String, logs: Set[String], connections: Set[String], customConfig: Option[Config] = None) = EventuateNodeTest(name, connections, logs, role(name), customConfig)
 
-  def setNodesConfig(nodes: Set[EventuateNodeTest]) = nodes.foreach {
-    case EventuateNodeTest(_, _, _, roleName, Some(config)) => nodeConfig(roleName)(config)
-    case _ => ()
-  }
+  def setNodesConfig(configs: Set[(RoleName, Config)]) = configs.map { case (roleName, config) => nodeConfig(roleName)(config) }
 
 }
 

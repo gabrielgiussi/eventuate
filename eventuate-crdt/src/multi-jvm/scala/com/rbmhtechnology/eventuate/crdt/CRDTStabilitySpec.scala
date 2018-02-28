@@ -31,27 +31,64 @@ import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
 import com.rbmhtechnology.eventuate.log.StabilityProtocol
 import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 import com.typesafe.config.Config
+import com.typesafe.config.ConfigFactory
 
 class CRDTStabilitySpecLeveldb extends CRDTStabilitySpec(new CRDTStabilitySpecConfig(MultiNodeConfigLeveldb.providerConfig)) with MultiNodeSupportLeveldb
 class CRDTStabilitySpecLeveldbMultiJvmNode1 extends CRDTStabilitySpecLeveldb
 class CRDTStabilitySpecLeveldbMultiJvmNode2 extends CRDTStabilitySpecLeveldb
-//class CRDTStabilitySpecLeveldbMultiJvmNode3 extends CRDTStabilitySpecLeveldb
+class CRDTStabilitySpecLeveldbMultiJvmNode3 extends CRDTStabilitySpecLeveldb
+class CRDTStabilitySpecLeveldbMultiJvmNode4 extends CRDTStabilitySpecLeveldb
 
 class CRDTStabilitySpecConfig(providerConfig: Config) extends EventuateMultiNodeSpecConfig with MultiNodeReplicationConfig {
 
   val logName = "stabilityLog"
 
-  val nodeA = endpointNode("nodeA", logName, Set("nodeB"))
-  val nodeB = endpointNode("nodeB", logName, Set("nodeA"))
-  //val nodeC = endpointNode("nodeC", logName, Set("nodeA","nodeD"))
-  //val nodeD = endpointNode("nodeD", logName, Set("nodeC"))
+  def stabilityConfig(serviceId: String, localPartition: String, partitions: Set[String]) = ConfigFactory.parseString(
+    s"""
+       |eventuate.crdt.stability.$serviceId.partitions = [ ${partitions.mkString(",")} ]
+       |eventuate.crdt.stability.$serviceId.local-partition = ${localPartition}
+     """.stripMargin)
+
+  val nodeA = endpointNode("nodeA", logName, Set("nodeB", "nodeC"))
+  val nodeB = endpointNode("nodeB", logName, Set("nodeA", "nodeD"))
+  val nodeC = endpointNode("nodeC", logName, Set("nodeA"))
+  val nodeD = endpointNode("nodeD", logName, Set("nodeB"))
+
+  def nodeServiceId(node: EventuateNodeTest) = s"awset-${node.endpointId}"
+
+  // C is part of the replicated EventLog but is not considered for stability. This may cause errors if CRDT ops are added from C.
+  val partitions = Set(nodeA, nodeB, nodeD)
+
+  val nodesConfig = partitions.map(p => {
+    val serviceId = nodeServiceId(p)
+    val localPartition = p.partitionName(logName).get
+    val otherPartitions = (partitions - p).map(_.partitionName(logName).get)
+    (p.role, stabilityConfig(serviceId, localPartition, otherPartitions))
+  })
 
   testTransport(on = true)
 
   setConfig(providerConfig)
 
+  setNodesConfig(nodesConfig)
+
 }
 
+/**
+ * This test VectorTime stability for CRDTs in a EventLog replicated among 4 locations, A,B,C & D.
+ *
+ *      A - B
+ *     /    \
+ *    C      D
+ *
+ * C is neither considered for stability nor configurated for receive TCStable messages. Not being considered for stability
+ * means that other locations won't await for events from C to emit TCStable messages, so we must assure that it doesn't
+ * add operations for the configured CRDTService, or the CRDT state could be potentially wrong.
+ * C is partitioned from the cluster until the end to probe that it doesn't affect stabilization on the other nodes.
+ *
+ * D is the first to emit TCStable messages after have received events from B that are in the causal future of those emitted by A.
+ *
+ */
 abstract class CRDTStabilitySpec(config: CRDTStabilitySpecConfig) extends EventuateMultiNodeSpec(config) {
 
   import Implicits._
@@ -61,60 +98,121 @@ abstract class CRDTStabilitySpec(config: CRDTStabilitySpecConfig) extends Eventu
 
   def initialParticipants: Int = roles.size
 
-  case class StableCRDT[A](value: A, pologSize: Int)
+  case class StableCRDT(vt: TCStable, value: Set[String], nonStableOps: Set[String])
 
-  def stable(entries: (EventuateNodeTest, Long)*) = TCStable(VectorTime(entries.map { case (e, l) => (e.partitionName(config.logName).get, l) }: _*))
+  def stable(entry: (EventuateNodeTest, Long), entries: (EventuateNodeTest, Long)*) = TCStable(VectorTime((entries :+ entry).map { case (e, l) => (e.partitionName(config.logName).get, l) }: _*))
 
   val awset1 = "awset1"
 
-  val initialize = (expected: TCStable) => (e: ReplicationEndpoint) => {
+  def add(value: String)(implicit service: AWSetService[String], changeProbe: TestProbe) = {
+    service.add(awset1, value)
+    changeProbe.expectMsg(value)
+  }
+
+  def tcstable(a: Long = 0, b: Long = 0, d: Long = -1) = TCStable(VectorTime(
+    Seq(nodeA, nodeB, nodeD).map(_.partitionName(logName).get).zip(Seq(a, b, d)).filterNot(_._2 == -1L).toMap
+  ))
+
+  val initialize = (serviceId: String) => (e: ReplicationEndpoint) => {
     val stableProbe = TestProbe()
     val changeProbe = TestProbe()
-    val service = new AWSetService[Int](e.id, e.log) {
-      override private[crdt] def onStable(crdt: AWSet[Int], stable: StabilityProtocol.TCStable): Unit = {
-        if (stable equiv expected)
-          stableProbe.ref ! StableCRDT(ops.value(crdt), crdt.polog.log.size)
+    val service = new AWSetService[String](serviceId, e.log) {
+      override private[crdt] def onStable(crdt: AWSet[String], stable: StabilityProtocol.TCStable): Unit = {
+        stableProbe.ref ! StableCRDT(stable, ops.value(crdt), crdt.polog.log.map(_.value.asInstanceOf[AddOp].entry.toString))
       }
 
-      override private[crdt] def onChange(crdt: AWSet[Int], operation: Option[Operation], vt: Option[VectorTime]): Unit = {
-        changeProbe.ref ! operation
+      override private[crdt] def onChange(crdt: AWSet[String], operation: Option[Operation]): Unit = {
+        operation.foreach(changeProbe.ref ! _.asInstanceOf[AddOp].entry)
       }
     }
     (stableProbe, changeProbe, service)
   }
 
   "Pure op based CRDT" must {
+    val brokenA = "brokenA"
+    val brokenC = "brokenC"
+    val repairedA = "repairedA"
+    val repairedC = "repairedC"
+
     "receive TCStable" in {
 
-      nodeA.runWith(initialize(stable(nodeB -> 1))) {
+      nodeA.runWith(initialize(nodeServiceId(nodeA))) {
         case (_, (stableProbe, changeProbe, service)) =>
-          service.activateStability(nodeA.partitionName(logName).get, Set(nodeB.partitionName(config.logName).get)) // Document & enforce this!
-          testConductor.blackhole(nodeA, nodeB, Both).await
-          enterBarrier("broken")
+          implicit val (c, s) = (changeProbe, service)
+          testConductor.blackhole(nodeA, nodeC, Both).await
+          enterBarrier(brokenC)
 
-          service.add(awset1, 1)
-          service.add(awset1, 2)
-
-          //changeProbe.expectMsg(AddOp(1))
-          //changeProbe.expectMsg(AddOp(2))
-
-          enterBarrier("repairAB")
-          testConductor.passThrough(nodeA, nodeB, Both).await
-          //changeProbe.expectMsg(AddOp(3))
-
-          stableProbe.expectMsg(StableCRDT(Set(1, 2, 3), 2))
-      }
-
-      nodeB.runWith(initialize(stable(nodeA -> 2))) {
-        case (_, (stableProbe, changeProbe, service)) =>
-          service.activateStability(nodeB.partitionName(logName).get, Set(nodeA.partitionName(config.logName).get))
-          enterBarrier("broken")
-
-          service.add(awset1, 3)
+          add("a1") // (A -> 1)
+          add("a2") // (A -> 2)
+          changeProbe.expectMsg("b1") // (A -> 2, B -> 3)
           stableProbe.expectNoMsg()
 
-          enterBarrier("repairAB")
-          stableProbe.expectMsg(StableCRDT(Set(1, 2, 3), 1))
+          testConductor.blackhole(nodeA, nodeB, Both).await
+          enterBarrier(brokenA)
+          stableProbe.expectNoMsg()
+          testConductor.passThrough(nodeA, nodeB, Both).await
+          enterBarrier(repairedA)
+
+          changeProbe.expectMsg("d1") // (A -> 2, B -> 3, D -> 4)
+          stableProbe.expectMsg(StableCRDT(tcstable(a = 2, b = 3, d = 0), Set("a1", "a2", "b1", "d1"), Set("d1")))
+
+          testConductor.passThrough(nodeA, nodeC, Both).await
+          enterBarrier(repairedC)
+
+      }
+
+      nodeB.runWith(initialize(nodeServiceId(nodeB))) {
+        case (_, (stableProbe, changeProbe, service)) =>
+          implicit val (c, s) = (changeProbe, service)
+          enterBarrier(brokenC)
+
+          service.value(awset1) // wakeup crdt!
+          changeProbe.expectMsg("a1") // (A -> 1)
+          changeProbe.expectMsg("a2") // (A -> 2)
+
+          add("b1") // (A -> 2, B -> 1)
+          stableProbe.expectNoMsg()
+
+          enterBarrier(brokenA)
+
+          changeProbe.expectMsg("d1") // (A -> 2, B -> 3, D -> 4)
+          stableProbe.expectMsg(StableCRDT(tcstable(a = 2, b = 0, d = 0), Set("a1", "a2", "b1", "d1"), Set("b1", "d1")))
+
+          enterBarrier(repairedA, repairedC)
+
+      }
+      nodeC.runWith(initialize(nodeServiceId(nodeC))) {
+        case (_, (stableProbe, changeProbe, service)) =>
+          service.value(awset1)
+          enterBarrier(brokenC)
+          stableProbe.expectNoMsg()
+
+          enterBarrier(brokenA, repairedA, repairedC)
+
+          changeProbe.expectMsg("a1")
+          changeProbe.expectMsg("a2")
+          changeProbe.expectMsg("b1")
+          changeProbe.expectMsg("d1")
+          stableProbe.expectNoMsg()
+      }
+      nodeD.runWith(initialize(nodeServiceId(nodeD))) {
+        case (_, (stableProbe, changeProbe, service)) =>
+          implicit val (c, s) = (changeProbe, service)
+
+          enterBarrier(brokenC)
+          service.value(awset1) // wakeup crdt!
+          changeProbe.expectMsg("a1") // (A -> 1)
+          changeProbe.expectMsg("a2") // (A -> 2)
+          changeProbe.expectMsg("b1") // (A -> 2, B -> 3)
+          stableProbe.expectMsg(StableCRDT(tcstable(a = 2, b = 0), Set("b1", "a1", "a2"), Set("b1")))
+
+          enterBarrier(brokenA)
+          add("d1")
+          enterBarrier(repairedA)
+          stableProbe.expectNoMsg()
+
+          enterBarrier(repairedC)
+
       }
 
     }

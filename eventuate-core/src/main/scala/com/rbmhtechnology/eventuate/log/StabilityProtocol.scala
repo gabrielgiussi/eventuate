@@ -20,15 +20,24 @@ import com.rbmhtechnology.eventuate.VectorTime
 
 object StabilityProtocol {
 
-  object MostRecentlyViewedTimestamps {
-    def apply(id: String, timestamp: VectorTime): MostRecentlyViewedTimestamps = MostRecentlyViewedTimestamps(Map(id -> timestamp))
+  case class StabilityConf(localPartition: String, partitions: Set[String])
+
+  object RTM {
+    def apply(conf: StabilityConf): RTM = RTM(conf.localPartition, (conf.partitions - conf.localPartition).map(_ -> VectorTime.Zero).toMap)
   }
 
-  case object StableVT
+  case class RTM(private val localPartition: String, private val timestamps: Map[String, VectorTime]) {
 
-  case class MostRecentlyViewedTimestamps(timestamps: Map[String, VectorTime])
+    def update(partition: String, timestamp: VectorTime): RTM = Option(partition).filterNot(_ equals localPartition).flatMap(timestamps.get) match {
+      case Some(oldTimestamp) => copy(timestamps = timestamps + (partition -> oldTimestamp.merge(timestamp)))
+      case _                  => this
+    }
 
-  type RTM = Map[String, VectorTime]
+    def stable(): Option[TCStable] = {
+      val processIds = timestamps.values.flatMap(_.value.keys).toSet
+      Option(TCStable(VectorTime(processIds.map(processId => (processId, timestamps.values.map(_.localTime(processId)).reduce[Long](Math.min))).toMap))).filterNot(_.isZero())
+    }
+  }
 
   case class TCStable(private val stableVector: VectorTime) {
     def isStable(that: VectorTime): Boolean = that <= stableVector
@@ -38,28 +47,4 @@ object StabilityProtocol {
     def equiv(that: TCStable): Boolean = stableVector.equiv(that.stableVector)
   }
 
-  val updateRTM: RTM => Map[String, VectorTime] => RTM = rtm => timestamps => {
-    val updated = timestamps.foldLeft(rtm) {
-      case (acc, (endpoint, sTVV)) =>
-        acc.get(endpoint) match {
-          case Some(vectorTime) => acc + (endpoint -> sTVV.merge(vectorTime))
-          case None             => acc + (endpoint -> sTVV)
-          case _                => acc
-        }
-    }
-    val merged = timestamps.values.fold(VectorTime.Zero)(_ merge _)
-    val updated2 = merged.value.foldLeft(updated) {
-      case (acc, (processId, m)) =>
-        val currentVT = acc.getOrElse(processId, VectorTime.Zero)
-        val localTime = currentVT.localTime(processId)
-        if (m > localTime) acc + (processId -> currentVT.setLocalTime(processId, m))
-        else acc
-    }
-    updated2
-  }
-
-  val stableVectorTime: Seq[VectorTime] => TCStable = rtm => {
-    val processIds = rtm.flatMap(_.value.keys).toSet
-    TCStable(VectorTime(processIds.map(processId => (processId, rtm.map(_.localTime(processId)).reduce[Long](Math.min))).toMap))
-  }
 }

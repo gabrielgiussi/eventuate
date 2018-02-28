@@ -72,7 +72,7 @@ class CRDTChaosSpecLeveldb extends WordSpec with Matchers with MultiLocationSpec
       val startCounter = new AtomicInteger()
       val stopCounter = new AtomicInteger()
 
-      override private[crdt] def onChange(crdt: AWSet[String], operation: Option[Operation], vt: Option[VectorTime]): Unit = {
+      override private[crdt] def onChange(crdt: AWSet[String], operation: Option[Operation]): Unit = {
         operation match {
           case Some(AddOp(entry: String)) if entry.startsWith("start") => startCounter.incrementAndGet()
           case Some(AddOp(entry: String)) if entry.startsWith("stop") => stopCounter.incrementAndGet()

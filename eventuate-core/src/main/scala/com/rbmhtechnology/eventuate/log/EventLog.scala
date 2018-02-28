@@ -19,17 +19,11 @@ package com.rbmhtechnology.eventuate.log
 import akka.actor._
 import akka.dispatch.MessageDispatcher
 import akka.event.{ Logging, LoggingAdapter }
+
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.EventsourcingProtocol._
 import com.rbmhtechnology.eventuate.ReplicationProtocol._
-import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.ConnectedEndpoint
-import com.rbmhtechnology.eventuate.log.EventLogMembershipProtocol.EventLogMembership
-import com.rbmhtechnology.eventuate.log.StabilityChannel.SubscribeTCStable
-import com.rbmhtechnology.eventuate.log.StabilityChannel.UnsubscribeTCStable
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.MostRecentlyViewedTimestamps
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.StableVT
 import com.rbmhtechnology.eventuate.snapshot.filesystem._
-import com.typesafe.config.Config
 
 import scala.collection.immutable.Seq
 import scala.concurrent._
@@ -125,8 +119,6 @@ case class DeletionMetadata(toSequenceNr: Long, remoteLogIds: Set[String])
  */
 case class BatchReadResult(events: Seq[DurableEvent], to: Long) extends DurableEventBatch
 
-case object GiveMeTCStable
-
 /**
  * Indicates that a storage backend doesn't support physical deletion of events.
  */
@@ -137,8 +129,7 @@ private class PhysicalDeletionNotSupportedException extends UnsupportedOperation
  *
  * @tparam A Event log state type.
  */
-trait EventLogSPI[A] {
-  this: Actor =>
+trait EventLogSPI[A] { this: Actor =>
   /**
    * Event log settings.
    */
@@ -254,12 +245,10 @@ trait EventLogSPI[A] {
  * @tparam A Event log state type (a subtype of [[EventLogState]]).
  */
 abstract class EventLog[A <: EventLogState](id: String) extends Actor with EventLogSPI[A] with Stash {
-
   import NotificationChannel._
   import EventLog._
 
   private case class RecoverStateSuccess(state: A)
-
   private case class RecoverStateFailure(cause: Throwable)
 
   // ---------------------------------------------------------------------------
@@ -343,39 +332,6 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
   private val snapshotStore: FilesystemSnapshotStore =
     new FilesystemSnapshotStore(new FilesystemSnapshotStoreSettings(context.system), id)
 
-  implicit class SafeConfig(config: Config) {
-
-    import scala.collection.JavaConverters._
-
-    def getSafeStringList(path: String): Option[Set[String]] = Try {
-      config.getStringList(path).asScala.toSet
-    }.toOption
-
-    def getSafeBoolean(path: String, default: Boolean) = Try {
-      config.getBoolean(path)
-    }.recover { case _ => default }.get
-  }
-
-  //protected def stabilityCheckerProps(partitions: Set[String]): Props = ??? //StabilityChecker.props(partitions)
-
-  private val stabilityEnabled = context.system.settings.config.getSafeBoolean("eventuate.log.stability", true) // TODO default false
-  /*
-  private val (stabilityChecker, stabilityChannel, membership) = {
-    if (stabilityEnabled) {
-      // TODO error! eventuate.endpoint.connections is not required (podes definir los endpoints programaticamente)
-      val connections = context.system.settings.config.getSafeStringList("eventuate.endpoint.connections").fold(Try { context.system.settings.config.getInt("eventuate.endpoint.connections.size") }.getOrElse(0))(_.size) // TODO awful
-      val m = context.actorOf(Props(new EventLogMembershipActor(id, self, connections))) // TODO should be reinitiated if fails?
-      val checker = context.system.settings.config.getSafeStringList("eventuate.log.stability.partitions").map(partitions => context.actorOf(Props[StabilityChecker], s"$id-stabilitychecker"))
-      val channel = context.actorOf(Props[StabilityChannel], s"$id-stabilitychannel")
-      (checker, Some(channel), Some(m))
-    } else (None, None, None)
-  }
-  */
-
-  val stabilityChecker: Option[ActorRef] = None
-  val stabilityChannel: Option[ActorRef] = None
-  val membership: Option[ActorRef] = None
-
   /**
    * This event log's logging adapter.
    */
@@ -389,8 +345,7 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       if (deletionMetadata.toSequenceNr > 0) self ! PhysicalDelete
       recoverStateSuccess(state)
       unstashAll()
-      context.become(initialized orElse tcstableProtocol)
-    //context.become(initialized) TODO
+      context.become(initialized)
     case RecoverStateFailure(e) =>
       logger.error(e, "Cannot recover event log state")
       recoverStateFailure(e)
@@ -449,7 +404,6 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       val sdr = sender()
       channel.foreach(_ ! r)
       remoteReplicationProgress += targetLogId -> (0L max from - 1)
-      //sendRTMUpdates(MostRecentlyViewedTimestamps(targetLogId, currentTargetVersionVector)) // TODO better send?
       replicationRead(from, clock.sequenceNr, max, scanLimit, evt => evt.replicable(currentTargetVersionVector, filter)) onComplete {
         case Success(r) => self.tell(ReplicationReadSuccess(r.events, from, r.to, targetLogId, null), sdr)
         case Failure(e) => self.tell(ReplicationReadFailure(ReplicationReadSourceException(e.getMessage), targetLogId), sdr)
@@ -462,7 +416,6 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       val currentTargetVersionVector = replicaVersionVectors(targetLogId)
       val updated = events.filterNot(_.before(currentTargetVersionVector))
       val reply = r.copy(updated, currentSourceVersionVector = clock.versionVector)
-      //sdr ! prepareReplicaVersionVectors(targetLogId)
       sender() ! reply
       channel.foreach(_ ! reply)
       logFilterStatistics("source", events, updated)
@@ -546,36 +499,6 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
       }
     case Terminated(subscriber) =>
       registry = registry.unregisterSubscriber(subscriber)
-    case r: ReplicaVersionVectors =>
-      sendRTMUpdates(MostRecentlyViewedTimestamps(r.timestamps))
-    case p: ConnectedEndpoint  => membership.foreach(_ ! p)
-    case e: EventLogMembership => stabilityChecker.foreach(_ ! e)
-
-  }
-
-  def processMembership(members: Set[String]): Unit = {
-
-  }
-
-  def prepareReplicaVersionVectors(targetlogId: String) =
-    ReplicaVersionVectors(replicaVersionVectors + (id -> clock.versionVector)) //- targetLogId // TODO optional
-
-  def sendRTMUpdates(updates: MostRecentlyViewedTimestamps): Unit = {
-    for {
-      checker <- stabilityChecker
-      channel <- stabilityChannel
-    } yield {
-      checker ! updates
-      checker.tell(StableVT, channel)
-    }
-  }
-
-  def tcstableProtocol: Receive = stabilityChannel match {
-    case None => Actor.emptyBehavior
-    case Some(sc) => {
-      case subscription: SubscribeTCStable     => sc forward subscription
-      case unsubscription: UnsubscribeTCStable => sc forward unsubscription
-    }
   }
 
   override def receive =
@@ -602,7 +525,6 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
 
   private def processReplicationWrites(writes: Seq[ReplicationWrite]): Unit = {
     for { w <- writes; (id, m) <- w.metadata } replicaVersionVectors = replicaVersionVectors.updated(id, m.currentVersionVector)
-    //sendRTMUpdates(MostRecentlyViewedTimestamps(replicaVersionVectors)) // TODO better send
     writeBatches(writes, prepareReplicatedEvents(_, _, currentSystemTime)) match {
       case Success((updatedWrites, updatedEvents, clock2)) =>
         clock = clock2
@@ -623,11 +545,8 @@ abstract class EventLog[A <: EventLogState](id: String) extends Actor with Event
               w.replyTo ! ReplicationWriteFailure(e)
           }
         }
-        logger.debug("Sending after write")
-        //sendRTMUpdates(MostRecentlyViewedTimestamps(id, clock.versionVector)) TODO better send
         channel.foreach(_ ! Updated(updatedEvents))
       case Failure(e) =>
-        logger.debug("Write Failure")
         writes.foreach { write =>
           write.replyTo ! ReplicationWriteFailure(e)
         }
@@ -710,7 +629,6 @@ object EventLog {
   /**
    * Periodically sent to an [[EventLog]] after reception of a [[Delete]]-command to
    * instruct the log to physically delete logically deleted events that are alreday replicated.
-   *
    * @see DeletionMetadata
    */
   private case object PhysicalDelete

@@ -23,8 +23,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
-import com.rbmhtechnology.eventuate.crdt.TCSBActor.SubscribeTCStable
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
+import com.rbmhtechnology.eventuate.log.StabilityProtocol._
 import com.typesafe.config.Config
 
 import scala.concurrent.{ ExecutionContext, Future }
@@ -80,11 +79,6 @@ trait CRDTServiceOps[A, B] {
    */
   def stable(crdt: A, stable: TCStable) = crdt
 
-  /**
-   * Must return `true` if the CRDT should receive [[TCStable]] for causal stabilization.
-   * By default it returns false because it only makes sense for pure op-based CRDTs.
-   */
-  def subscribeToStable: Boolean = false
 }
 
 object CRDTService {
@@ -117,8 +111,6 @@ trait CRDTService[A, B] {
 
   private var manager: Option[ActorRef] = None
 
-  private var stability: Option[ActorRef] = None
-
   private lazy val settings: CRDTServiceSettings =
     new CRDTServiceSettings(system.settings.config)
 
@@ -149,7 +141,12 @@ trait CRDTService[A, B] {
    * Starts the CRDT service.
    */
   def start(): Unit = if (manager.isEmpty) {
-    manager = Some(system.actorOf(Props(new CRDTManager)))
+    import scala.collection.JavaConverters._
+    val stabilityConf = for {
+      localPartition <- Try { system.settings.config.getString(s"eventuate.crdt.stability.$serviceId.local-partition") }.toOption
+      partitions <- Try { system.settings.config.getStringList(s"eventuate.crdt.stability.$serviceId.partitions") }.toOption.map(_.asScala.toSet)
+    } yield StabilityConf(localPartition, partitions)
+    manager = Some(system.actorOf(Props(new CRDTManager(stabilityConf))))
   }
 
   /**
@@ -172,19 +169,6 @@ trait CRDTService[A, B] {
    */
   def save(id: String): Future[SnapshotMetadata] = withManagerAndDispatcher { (w, d) =>
     w.ask(Save(id)).mapTo[SaveReply].map(_.metadata)(d)
-  }
-
-  def activateStability(): Unit = {
-    import scala.collection.JavaConverters._
-    // TODO Should handle exceptions in case config doesn't exists?
-    val localPartition = system.settings.config.getString(s"eventuate.crdt.stability.$serviceId.local-partition")
-    val partitions = system.settings.config.getStringList(s"eventuate.crdt.stability.$serviceId.partitions")
-    activateStability(localPartition, partitions.asScala.toSet)
-  }
-
-  def activateStability(localPartition: String, partitions: Set[String]): Unit = {
-    if (ops.subscribeToStable)
-      stability = Some(system.actorOf(TCSBActor.props(serviceId, log, localPartition, partitions), s"tcsb-$serviceId"))
   }
 
   protected def op(id: String, operation: Operation): Future[B] = withManagerAndDispatcher { (w, d) =>
@@ -212,11 +196,11 @@ trait CRDTService[A, B] {
 
   private case class SaveReply(id: String, metadata: SnapshotMetadata) extends Identified
 
-  private case class OnChange(crdt: A, operation: Option[Operation], vt: Option[VectorTime] = None)
+  private case class OnChange(crdt: A, operation: Option[Operation])
 
   private case class OnStable(crdt: A, stable: TCStable)
 
-  private class CRDTActor(crdtId: String, override val eventLog: ActorRef) extends EventsourcedActor {
+  private class CRDTActor(crdtId: String, override val eventLog: ActorRef, stabilityConf: Option[StabilityConf]) extends EventsourcedActor {
     override val id =
       s"${serviceId}_${crdtId}"
 
@@ -226,7 +210,8 @@ trait CRDTService[A, B] {
     var crdt: A =
       ops.zero
 
-    if (ops.subscribeToStable) stability.foreach(_ ! SubscribeTCStable(self))
+    var lastTCStable: Option[TCStable] = None
+    var rtm: Option[RTM] = stabilityConf.map(RTM.apply)
 
     override def stateSync: Boolean = ops.precondition
 
@@ -254,16 +239,22 @@ trait CRDTService[A, B] {
           case Failure(err) =>
             sender() ! Status.Failure(err)
         }
-      case s: TCStable =>
-        crdt = ops.stable(crdt, s)
-        context.parent ! OnStable(crdt, s)
     }
 
     override def onEvent = {
       case evt @ ValueUpdated(operation) =>
         crdt = ops.effect(crdt, operation, lastVectorTimestamp, lastSystemTimestamp, lastEmitterId)
-        // update RTM
-        context.parent ! OnChange(crdt, Some(operation), Some(lastVectorTimestamp))
+        updateStability(lastProcessId, lastVectorTimestamp)
+        context.parent ! OnChange(crdt, Some(operation))
+    }
+
+    def updateStability(processId: String, vt: VectorTime) = {
+      rtm = rtm.map(_.update(processId, vt))
+      rtm.flatMap(_.stable()).filterNot(s => lastTCStable.fold(false)(_ equiv s)).foreach { tcstable =>
+        lastTCStable = Some(tcstable)
+        crdt = ops.stable(crdt, tcstable)
+        context.parent ! OnStable(crdt, tcstable)
+      }
     }
 
     override def onSnapshot = {
@@ -274,14 +265,14 @@ trait CRDTService[A, B] {
 
   }
 
-  private class CRDTManager extends Actor {
+  private class CRDTManager(stabilityConf: Option[StabilityConf]) extends Actor {
     var crdts: Map[String, ActorRef] = Map.empty
 
     def receive = {
       case cmd: Identified =>
         crdtActor(cmd.id) forward cmd
-      case n @ OnChange(crdt, operation, vt) =>
-        onChange(crdt, operation, vt)
+      case n @ OnChange(crdt, operation) =>
+        onChange(crdt, operation)
       case s @ OnStable(crdt, stable) =>
         onStable(crdt, stable)
       case Terminated(crdt) =>
@@ -294,14 +285,14 @@ trait CRDTService[A, B] {
       case Some(crdt) =>
         crdt
       case None =>
-        val crdt = context.watch(context.actorOf(Props(new CRDTActor(id, log))))
+        val crdt = context.watch(context.actorOf(Props(new CRDTActor(id, log, stabilityConf))))
         crdts = crdts.updated(id, crdt)
         crdt
     }
   }
 
   /** For testing purposes only */
-  private[crdt] def onChange(crdt: A, operation: Option[Operation], vt: Option[VectorTime]): Unit = ()
+  private[crdt] def onChange(crdt: A, operation: Option[Operation]): Unit = ()
 
   private[crdt] def onStable(crdt: A, stable: TCStable): Unit = ()
 }

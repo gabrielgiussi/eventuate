@@ -115,8 +115,6 @@ trait CvRDTPureOp[C, B] extends CRDTServiceOps[CRDT[C], B] {
    */
   override def precondition: Boolean = false
 
-  override def subscribeToStable: Boolean = true
-
 }
 
 /**

@@ -17,51 +17,55 @@
 package com.rbmhtechnology.eventuate.log
 
 import com.rbmhtechnology.eventuate.VectorTime
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.RTM
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.StabilityConf
+import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 import org.scalatest.Matchers
 import org.scalatest.WordSpecLike
 
 class StabilityProtocolSpec extends WordSpecLike with Matchers {
 
-  import StabilityProtocol._
-  import StabilityProtocolSpecSupport._
+  val A = "A"
+  val B = "B"
+  val C = "C"
 
-  implicit class EnhancedRTM(rtm: RTM) {
-    private def _update(timestamps: Map[String, VectorTime]) = updateRTM(rtm)(timestamps)
-    def update(e: (String, VectorTime), es: (String, VectorTime)*) = _update(Map(e) ++ Map(es: _*))
-    def update(id: String, vt: VectorTime): RTM = _update(Map(id -> vt))
-    def stable() = stableVectorTime(rtm.values.toSeq)
-  }
+  def partitions: Set[String] = Set(A, B, C)
+
+  def initialRTM = RTM(StabilityConf(A, partitions))
+
+  def vt(a: Long, b: Long, c: Long) = VectorTime(A -> a, B -> b, C -> c)
+
+  def tcstable(a: Long, b: Long, c: Long) = Some(TCStable(vt(a, b, c)))
 
   "Stability" should {
-    "emit TCStable(0,0) when A = (1,0), B = unknown" in new ClusterAB {
-      initialRTM
-        .update(A, vt(1, 0))
-        .stable shouldBe tcstable(0, 0)
-    }
-    "emit TCStable(0,1) when A = (1,1), B = (0,1)" in new ClusterAB {
-      initialRTM
-        .update(A, vt(1, 1))
-        .update(B, vt(0, 1))
-        .stable shouldBe tcstable(0, 1)
-    }
-    "emit TCStable(1,1) when A = (1,1), B = (1,1)" in new ClusterAB {
-      initialRTM
-        .update(A, vt(1, 1))
-        .update(B, vt(1, 1))
-        .stable shouldBe tcstable(1, 1)
-    }
-    "emit TCStable(0,1,0) when A = (1,1,1), B = unknown, C = (1,1,1)" in new ClusterABC {
+    "drop updates from local partition" in {
       initialRTM
         .update(A, vt(1, 1, 1))
-        .update(C, vt(1, 1, 1))
-        .stable shouldBe tcstable(0, 1, 0)
+        .update(B, vt(2, 2, 2))
+        .update(C, vt(2, 2, 2))
+        .stable shouldBe tcstable(2, 2, 2)
     }
-    "emit TCStable(1,1,1) when A = (2,1,1), B = (1,2,1), C = (1,1,2)" in new ClusterABC {
+    "not emit tcstable when B = (1,1,1), C = unknown " in {
       initialRTM
-        .update(
-          (A, vt(2, 1, 1)),
-          (B, vt(1, 2, 1)),
-          (C, vt(1, 1, 2)))
+        .update(B, vt(1, 1, 1))
+        .stable shouldBe None
+    }
+    "emit TCStable(0,1) when B = (0,1,1), C = (0,0,1) " in {
+      initialRTM
+        .update(B, vt(0, 1, 1))
+        .update(C, vt(0, 0, 1))
+        .stable shouldBe tcstable(0, 0, 1)
+    }
+    "emit TCStable(1,1) when A = (1,1,1), B = (1,1,1)" in {
+      initialRTM
+        .update(B, vt(1, 1, 1))
+        .update(C, vt(1, 1, 1))
+        .stable shouldBe tcstable(1, 1, 1)
+    }
+    "emit TCStable(1,1) when A = (2,1), B = (1,2)" in {
+      initialRTM
+        .update(B, vt(2, 2, 1))
+        .update(C, vt(1, 1, 2))
         .stable shouldBe tcstable(1, 1, 1)
     }
   }
