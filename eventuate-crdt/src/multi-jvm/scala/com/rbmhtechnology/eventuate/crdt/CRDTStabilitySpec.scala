@@ -16,6 +16,7 @@
 
 package com.rbmhtechnology.eventuate.crdt
 
+import akka.actor.ActorRef
 import akka.remote.transport.ThrottlerTransportAdapter.Direction._
 import akka.testkit.TestProbe
 import com.rbmhtechnology.eventuate.EventuateMultiNodeSpec
@@ -113,18 +114,20 @@ abstract class CRDTStabilitySpec(config: CRDTStabilitySpecConfig) extends Eventu
     Seq(nodeA, nodeB, nodeD).map(_.partitionName(logName).get).zip(Seq(a, b, d)).filterNot(_._2 == -1L).toMap
   ))
 
+  def createService(serviceId: String, log: ActorRef, stableProbe: TestProbe, changeProbe: TestProbe): AWSetService[String] = new AWSetService[String](serviceId, log) {
+    override private[crdt] def onStable(crdt: AWSet[String], stable: StabilityProtocol.TCStable): Unit = {
+      stableProbe.ref ! StableCRDT(stable, ops.value(crdt), crdt.polog.log.map(_.value.asInstanceOf[AddOp].entry.toString))
+    }
+
+    override private[crdt] def onChange(crdt: AWSet[String], operation: Option[Operation]): Unit = {
+      operation.foreach(changeProbe.ref ! _.asInstanceOf[AddOp].entry)
+    }
+  }
+
   val initialize = (serviceId: String) => (e: ReplicationEndpoint) => {
     val stableProbe = TestProbe()
     val changeProbe = TestProbe()
-    val service = new AWSetService[String](serviceId, e.log) {
-      override private[crdt] def onStable(crdt: AWSet[String], stable: StabilityProtocol.TCStable): Unit = {
-        stableProbe.ref ! StableCRDT(stable, ops.value(crdt), crdt.polog.log.map(_.value.asInstanceOf[AddOp].entry.toString))
-      }
-
-      override private[crdt] def onChange(crdt: AWSet[String], operation: Option[Operation]): Unit = {
-        operation.foreach(changeProbe.ref ! _.asInstanceOf[AddOp].entry)
-      }
-    }
+    val service = createService(serviceId, e.log, stableProbe, changeProbe)
     (stableProbe, changeProbe, service)
   }
 
@@ -137,7 +140,7 @@ abstract class CRDTStabilitySpec(config: CRDTStabilitySpecConfig) extends Eventu
     "receive TCStable" in {
 
       nodeA.runWith(initialize(nodeServiceId(nodeA))) {
-        case (_, (stableProbe, changeProbe, service)) =>
+        case (e, (stableProbe, changeProbe, service)) =>
           implicit val (c, s) = (changeProbe, service)
           testConductor.blackhole(nodeA, nodeC, Both).await
           enterBarrier(brokenC)
@@ -158,6 +161,14 @@ abstract class CRDTStabilitySpec(config: CRDTStabilitySpecConfig) extends Eventu
 
           testConductor.passThrough(nodeA, nodeC, Both).await
           enterBarrier(repairedC)
+
+          service.save(awset1).await
+
+          val service2 = createService(nodeServiceId(nodeA), e.log, stableProbe, changeProbe)
+          service2.value(awset1).await should be(Set("a1", "a2", "b1", "d1"))
+
+          changeProbe.expectNoMessage(3.seconds)
+          stableProbe.expectNoMessage(3.seconds)
 
       }
 
