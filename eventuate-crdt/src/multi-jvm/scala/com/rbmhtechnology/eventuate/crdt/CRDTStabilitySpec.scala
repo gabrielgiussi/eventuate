@@ -146,11 +146,11 @@ abstract class CRDTStabilitySpec(config: CRDTStabilitySpecConfig) extends Eventu
           add("a1") // (A -> 1)
           add("a2") // (A -> 2)
           changeProbe.expectMsg("b1") // (A -> 2, B -> 3)
-          stableProbe.expectNoMsg(3.seconds)
+          stableProbe.expectNoMessage(3.seconds)
 
           testConductor.blackhole(nodeA, nodeB, Both).await
           enterBarrier(brokenA)
-          stableProbe.expectNoMsg(3.seconds)
+          stableProbe.expectNoMessage(3.seconds)
           testConductor.passThrough(nodeA, nodeB, Both).await
           enterBarrier(repairedA)
 
@@ -172,7 +172,7 @@ abstract class CRDTStabilitySpec(config: CRDTStabilitySpecConfig) extends Eventu
           changeProbe.expectMsg("a2") // (A -> 2)
 
           add("b1") // (A -> 2, B -> 1)
-          stableProbe.expectNoMsg(3.seconds)
+          stableProbe.expectNoMessage(3.seconds)
 
           enterBarrier(brokenA)
 
@@ -186,7 +186,7 @@ abstract class CRDTStabilitySpec(config: CRDTStabilitySpecConfig) extends Eventu
         case (_, (stableProbe, changeProbe, service)) =>
           service.value(awset1)
           enterBarrier(brokenC)
-          stableProbe.expectNoMsg(3.seconds)
+          stableProbe.expectNoMessage(3.seconds)
 
           enterBarrier(brokenA, repairedA, repairedC)
 
@@ -194,7 +194,7 @@ abstract class CRDTStabilitySpec(config: CRDTStabilitySpecConfig) extends Eventu
           changeProbe.expectMsg("a2")
           changeProbe.expectMsg("b1")
           changeProbe.expectMsg("d1")
-          stableProbe.expectNoMsg(3.seconds)
+          stableProbe.expectNoMessage(3.seconds)
       }
       nodeD.runWith(initialize(nodeServiceId(nodeD))) {
         case (_, (stableProbe, changeProbe, service)) =>
@@ -210,7 +210,7 @@ abstract class CRDTStabilitySpec(config: CRDTStabilitySpecConfig) extends Eventu
           enterBarrier(brokenA)
           add("d1")
           enterBarrier(repairedA)
-          stableProbe.expectNoMsg(3.seconds)
+          stableProbe.expectNoMessage(3.seconds)
 
           enterBarrier(repairedC)
 
