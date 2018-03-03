@@ -19,8 +19,8 @@ package com.rbmhtechnology.eventuate.crdt
 import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
+import com.rbmhtechnology.eventuate.crdt.StabilityProtocol.TCStable
 import com.rbmhtechnology.eventuate.crdt.TPSetService.TPSet
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
 
 import scala.collection.immutable.Set
 

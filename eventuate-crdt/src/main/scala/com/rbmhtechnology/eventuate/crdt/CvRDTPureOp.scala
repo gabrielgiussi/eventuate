@@ -22,7 +22,7 @@ import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.Versioned
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Redundancy_
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.SimpleCRDT
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
+import com.rbmhtechnology.eventuate.crdt.StabilityProtocol.TCStable
 
 /**
  * Type-class for pure-op based CRDT.

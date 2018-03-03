@@ -23,7 +23,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 import com.rbmhtechnology.eventuate._
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes._
-import com.rbmhtechnology.eventuate.log.StabilityProtocol._
+import com.rbmhtechnology.eventuate.crdt.StabilityProtocol._
 import com.typesafe.config.Config
 
 import scala.concurrent.{ ExecutionContext, Future }

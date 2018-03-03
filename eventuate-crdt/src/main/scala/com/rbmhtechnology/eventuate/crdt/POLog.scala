@@ -18,10 +18,9 @@ package com.rbmhtechnology.eventuate.crdt
 
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.CausalRedundancy
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
-import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.Versioned
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Redundancy_
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
+import com.rbmhtechnology.eventuate.crdt.StabilityProtocol.TCStable
 
 /**
  * A Partial Ordered Log which retains all invoked operations together with their timestamps.

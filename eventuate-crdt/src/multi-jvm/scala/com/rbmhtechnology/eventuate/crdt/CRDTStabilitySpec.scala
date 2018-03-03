@@ -28,8 +28,7 @@ import com.rbmhtechnology.eventuate.ReplicationEndpoint
 import com.rbmhtechnology.eventuate.VectorTime
 import com.rbmhtechnology.eventuate.crdt.AWSetService.AWSet
 import com.rbmhtechnology.eventuate.crdt.CRDTTypes.Operation
-import com.rbmhtechnology.eventuate.log.StabilityProtocol
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
+import com.rbmhtechnology.eventuate.crdt.StabilityProtocol.TCStable
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 

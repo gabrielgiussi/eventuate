@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
-package com.rbmhtechnology.eventuate.log
+package com.rbmhtechnology.eventuate.crdt
 
 import com.rbmhtechnology.eventuate.VectorTime
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.RTM
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.StabilityConf
-import com.rbmhtechnology.eventuate.log.StabilityProtocol.TCStable
+import com.rbmhtechnology.eventuate.crdt.StabilityProtocol._
 import org.scalatest.Matchers
 import org.scalatest.WordSpecLike
 
